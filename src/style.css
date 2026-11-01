@@ -1,0 +1,144 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+
+/* Mobile first-person controls */
+
+.mobile-controls {
+  display: none;
+}
+
+body.mobile-game {
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.mobile-game canvas {
+  touch-action: none;
+}
+
+body.mobile-game .mobile-controls {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* Movement joystick */
+
+.mobile-joystick {
+  position: fixed;
+  left: calc(24px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+
+  width: 132px;
+  height: 132px;
+
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+
+  background: rgba(30, 40, 45, 0.35);
+  backdrop-filter: blur(4px);
+
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.mobile-joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+
+  width: 56px;
+  height: 56px;
+
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.65);
+
+  background: rgba(255, 255, 255, 0.45);
+
+  transform: translate(
+    calc(-50% + var(--knob-x, 0px)),
+    calc(-50% + var(--knob-y, 0px))
+  );
+
+  pointer-events: none;
+}
+
+/* Jump button */
+
+.mobile-jump {
+  position: fixed;
+  right: calc(35px + env(safe-area-inset-right));
+  bottom: calc(45px + env(safe-area-inset-bottom));
+
+  width: 84px;
+  height: 84px;
+
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+
+  background: rgba(255, 255, 255, 0.35);
+  color: white;
+
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+
+  backdrop-filter: blur(4px);
+
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.mobile-jump:active {
+  background: rgba(255, 255, 255, 0.65);
+  transform: scale(0.94);
+}
+
+/* Smaller mobile screens */
+
+@media (max-width: 480px) {
+  .mobile-joystick {
+    width: 116px;
+    height: 116px;
+  }
+
+  .mobile-joystick-knob {
+    width: 50px;
+    height: 50px;
+  }
+
+  .mobile-jump {
+    width: 74px;
+    height: 74px;
+    right: calc(25px + env(safe-area-inset-right));
+  }
+}
