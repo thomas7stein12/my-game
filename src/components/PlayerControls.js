@@ -151,6 +151,9 @@ export function PlayerControls(camera, domElement) {
 
     const lookSensitivity = 0.004;
 
+    // Use the same rotation order as PointerLockControls
+    const lookRotation = new THREE.Euler(0, 0, 0, "YXZ");
+
     domElement.addEventListener("pointerdown", (event) => {
       if (event.pointerType === "mouse") return;
       if (lookPointerId !== null) return;
@@ -160,6 +163,9 @@ export function PlayerControls(camera, domElement) {
       lookPointerId = event.pointerId;
       lastLookX = event.clientX;
       lastLookY = event.clientY;
+
+      // Sync with the current camera orientation
+      lookRotation.setFromQuaternion(camera.quaternion);
 
       domElement.setPointerCapture(event.pointerId);
     });
@@ -175,16 +181,19 @@ export function PlayerControls(camera, domElement) {
       lastLookX = event.clientX;
       lastLookY = event.clientY;
 
-      // Rotate the camera (inverted touch controls)
-      camera.rotation.y += deltaX * lookSensitivity;
-      camera.rotation.x += deltaY * lookSensitivity;
+      // Rotate the camera using YXZ order
+      lookRotation.y += deltaX * lookSensitivity;
+      lookRotation.x += deltaY * lookSensitivity;
 
-      // Prevent the camera from flipping upside down
-      camera.rotation.x = THREE.MathUtils.clamp(
-        camera.rotation.x,
+      // Prevent the camera from flipping or rolling
+      lookRotation.x = THREE.MathUtils.clamp(
+        lookRotation.x,
         Math.PI / 2 - controls.maxPolarAngle,
         Math.PI / 2 - controls.minPolarAngle,
       );
+
+      // Apply the rotation
+      camera.quaternion.setFromEuler(lookRotation);
     });
 
     function endLook(event) {
