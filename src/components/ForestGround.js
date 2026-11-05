@@ -9,6 +9,9 @@ const exrLoader = new EXRLoader();
 
 // Create our forest ground.
 export async function loadForestGround() {
+  // Make the visible forest floor larger than the playable area.
+  const groundSize = 100;
+
   // Load all three textures at the same time.
   const [diffuseMap, normalMap, roughnessMap] = await Promise.all([
     textureLoader.loadAsync(
@@ -39,7 +42,8 @@ export async function loadForestGround() {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
 
-    texture.repeat.set(10, 10);
+    // Keep the same texture detail as the original 20 x 20 ground.
+    texture.repeat.set(groundSize / 2, groundSize / 2);
   });
 
   // Create the forest ground material.
@@ -56,8 +60,7 @@ export async function loadForestGround() {
     normalScale: new THREE.Vector2(0.65, 0.65),
   });
 
-  // Create the same size ground we already had.
-  const geometry = new THREE.PlaneGeometry(20, 20);
+  const geometry = new THREE.PlaneGeometry(groundSize, groundSize);
 
   const ground = new THREE.Mesh(geometry, material);
 

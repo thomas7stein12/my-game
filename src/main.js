@@ -6,6 +6,7 @@ import renderer from "./components/Renderer.js";
 import directionalLight from "./components/DirectionalLight.js";
 import { loadForestGround } from "./components/ForestGround.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
+import { loadForestEnvironment } from "./components/ForestEnvironment.js";
 import jumpPlatforms, {
   platformSurfaces,
   platformDefinitions,
@@ -39,6 +40,18 @@ loadForestGround()
   })
   .catch((error) => {
     console.error("Failed to load forest ground:", error);
+  });
+
+// Load our forest environment.
+loadForestEnvironment()
+  .then((environmentMap) => {
+    scene.background = environmentMap;
+
+    // Use the HDR environment for natural lighting and reflections.
+    scene.environment = environmentMap;
+  })
+  .catch((error) => {
+    console.error("Failed to load forest environment:", error);
   });
 
 // Load our boulder model once.
