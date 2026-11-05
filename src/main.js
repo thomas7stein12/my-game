@@ -7,11 +7,17 @@ import directionalLight from "./components/DirectionalLight.js";
 import { loadForestGround } from "./components/ForestGround.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
 import { loadForestEnvironment } from "./components/ForestEnvironment.js";
+import { loadBoundaryBarriers } from "./components/BoundaryBarriers.js";
 import jumpPlatforms, {
   platformSurfaces,
   platformDefinitions,
 } from "./components/JumpPlatforms.js";
-import { loadRockModel, addRock, addRockSupport } from "./components/Rock.js";
+import {
+  loadRockModel,
+  addRock,
+  addRockSupport,
+  createRockCollider,
+} from "./components/Rock.js";
 import "./style.css";
 
 // Get the application container
@@ -20,11 +26,15 @@ const app = document.querySelector("#app");
 // Add the renderer to the page
 app.appendChild(renderer.domElement);
 
+// Store collision boundaries for all our rocks.
+const rockColliders = [];
+
 // Initialize first-person controls
 const playerControls = PlayerControls(
   camera,
   renderer.domElement,
   platformSurfaces,
+  rockColliders,
 );
 
 // Create a clock to track frame time
@@ -54,15 +64,23 @@ loadForestEnvironment()
     console.error("Failed to load forest environment:", error);
   });
 
+// Load barriers around the playable area.
+loadBoundaryBarriers()
+  .then((barriers) => {
+    scene.add(barriers);
+  })
+  .catch((error) => {
+    console.error("Failed to load boundary barriers:", error);
+  });
+
 // Load our boulder model once.
 loadRockModel()
   .then((rockModel) => {
     // Create a boulder for every jumping platform.
     platformDefinitions.forEach((data) => {
       // Add decorative support rocks underneath higher platforms.
-      // These rocks are purely visual and have no collision.
       if (data.addSupportRocks) {
-        addRockSupport(scene, rockModel, {
+        const supportRocks = addRockSupport(scene, rockModel, {
           position: {
             x: data.x,
             z: data.z,
@@ -72,10 +90,15 @@ loadRockModel()
           scale: data.rockScale,
           rotationY: data.rockRotationY,
         });
+
+        // Give every decorative rock its own collision boundary.
+        supportRocks.forEach((rock) => {
+          rockColliders.push(createRockCollider(rock));
+        });
       }
 
       // Add the playable boulder on top.
-      addRock(scene, rockModel, {
+      const rock = addRock(scene, rockModel, {
         position: {
           x: data.x,
           y: 0,
@@ -88,6 +111,9 @@ loadRockModel()
         // Align the rock with its collision surface.
         topY: data.topY,
       });
+
+      // Give the playable boulder its own collision boundary.
+      rockColliders.push(createRockCollider(rock));
     });
   })
   .catch((error) => {

@@ -152,3 +152,27 @@ export function addRockSupport(scene, model, options = {}) {
 
   return supportRocks;
 }
+
+// Create an invisible collision boundary for a rock.
+export function createRockCollider(rock) {
+  // Get the actual dimensions and position of the rock.
+  rock.updateMatrixWorld(true);
+
+  const bounds = new THREE.Box3().setFromObject(rock);
+
+  const size = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+
+  return {
+    x: center.x,
+    z: center.z,
+
+    // Horizontal collision dimensions.
+    radiusX: size.x / 2,
+    radiusZ: size.z / 2,
+
+    // Vertical collision dimensions.
+    minY: bounds.min.y,
+    maxY: bounds.max.y,
+  };
+}

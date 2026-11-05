@@ -21,8 +21,8 @@ export const platformDefinitions = [
     rockRotationY: 0.2,
   },
   {
-    x: 0,
-    z: -2,
+    x: -0.5,
+    z: -2.5,
     width: 3.2,
     depth: 3.2,
     topY: 1.8,

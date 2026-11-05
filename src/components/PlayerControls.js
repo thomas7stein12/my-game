@@ -1,7 +1,12 @@
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import * as THREE from "three";
 
-export function PlayerControls(camera, domElement, platformSurfaces = []) {
+export function PlayerControls(
+  camera,
+  domElement,
+  platformSurfaces = [],
+  rockColliders = [],
+) {
   const controls = new PointerLockControls(camera, domElement);
 
   // Mouse sensitivity
@@ -245,6 +250,9 @@ export function PlayerControls(camera, domElement, platformSurfaces = []) {
   const movementSpeed = 6;
   const platformLimit = 9.4;
 
+  // Approximate radius of the player's collision body.
+  const playerRadius = 0.1;
+
   // Gravity settings
   const gravity = 20;
   const jumpStrength = 8;
@@ -276,6 +284,91 @@ export function PlayerControls(camera, domElement, platformSurfaces = []) {
       camera.position.z <= surface.z + surface.depth / 2;
 
     return withinX && withinZ;
+  }
+
+  // Check whether the player's body is overlapping a rock.
+  function isOverlappingRock(x, z, collider) {
+    const playerFeetY = camera.position.y - eyeHeight;
+    const playerHeadY = camera.position.y;
+
+    // Only collide with the sides of rocks when the player's
+    // body actually overlaps the rock vertically.
+    const overlapsVertically =
+      playerHeadY > collider.minY && playerFeetY < collider.maxY - 0.08;
+
+    if (!overlapsVertically) {
+      return false;
+    }
+
+    // Expand the rock's collision boundary to account for
+    // the player's own collision radius.
+    const radiusX = collider.radiusX + playerRadius;
+    const radiusZ = collider.radiusZ + playerRadius;
+
+    // Calculate the player's distance from the rock.
+    const dx = (x - collider.x) / radiusX;
+    const dz = (z - collider.z) / radiusZ;
+
+    // Check whether the player is inside the boundary.
+    return dx * dx + dz * dz < 1;
+  }
+
+  // Prevent the player from walking through rocks.
+  function resolveRockCollisions(previousX, previousZ) {
+    for (const collider of rockColliders) {
+      // Skip this rock if there is no collision.
+      if (!isOverlappingRock(camera.position.x, camera.position.z, collider)) {
+        continue;
+      }
+
+      // Remember the position we were trying to reach.
+      const nextX = camera.position.x;
+      const nextZ = camera.position.z;
+
+      // Try blocking movement along the Z axis first.
+      // This allows the player to slide along the rock.
+      if (!isOverlappingRock(nextX, previousZ, collider)) {
+        camera.position.z = previousZ;
+      }
+
+      // Otherwise, try blocking movement along the X axis.
+      else if (!isOverlappingRock(previousX, nextZ, collider)) {
+        camera.position.x = previousX;
+      }
+
+      // If neither direction is safe, push the player
+      // outside the rock's collision boundary.
+      else {
+        let dx = nextX - collider.x;
+        let dz = nextZ - collider.z;
+
+        const radiusX = collider.radiusX + playerRadius;
+        const radiusZ = collider.radiusZ + playerRadius;
+
+        let distance = Math.sqrt((dx / radiusX) ** 2 + (dz / radiusZ) ** 2);
+
+        // Handle the rare case where the player is at the
+        // exact center of the rock.
+        if (distance < 0.0001) {
+          dx = previousX - collider.x;
+          dz = previousZ - collider.z;
+
+          distance = Math.sqrt((dx / radiusX) ** 2 + (dz / radiusZ) ** 2);
+        }
+
+        // Choose a safe direction if the previous position
+        // was also directly inside the rock.
+        if (distance < 0.0001) {
+          dx = 1;
+          dz = 0;
+          distance = 1 / radiusX;
+        }
+
+        // Move the player to the edge of the collision boundary.
+        camera.position.x = collider.x + dx / distance;
+        camera.position.z = collider.z + dz / distance;
+      }
+    }
   }
 
   let verticalVelocity = 0;
@@ -367,11 +460,15 @@ export function PlayerControls(camera, domElement, platformSurfaces = []) {
       right /= length;
     }
 
-    // Move relative to camera direction
+    // Remember our position before moving.
+    const previousX = camera.position.x;
+    const previousZ = camera.position.z;
+
+    // Move relative to camera direction.
     controls.moveForward(forward * movementSpeed * delta);
     controls.moveRight(right * movementSpeed * delta);
 
-    // Keep player on the platform
+    // Keep player inside the playable area.
     camera.position.x = THREE.MathUtils.clamp(
       camera.position.x,
       -platformLimit,
@@ -383,6 +480,9 @@ export function PlayerControls(camera, domElement, platformSurfaces = []) {
       -platformLimit,
       platformLimit,
     );
+
+    // Check and resolve collisions with all the rocks.
+    resolveRockCollisions(previousX, previousZ);
 
     // Check whether the player still has a platform underneath them.
     if (isGrounded) {
