@@ -4,7 +4,7 @@ import scene from "./components/Scene.js";
 import camera from "./components/Camera.js";
 import renderer from "./components/Renderer.js";
 import directionalLight from "./components/DirectionalLight.js";
-import platform from "./components/Platform.js";
+import { loadForestGround } from "./components/ForestGround.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
 import jumpPlatforms, {
   platformSurfaces,
@@ -32,8 +32,14 @@ const clock = new THREE.Clock();
 // Add lighting to the scene
 scene.add(directionalLight);
 
-// Add the original ground platform
-scene.add(platform);
+// Load our realistic forest ground.
+loadForestGround()
+  .then((ground) => {
+    scene.add(ground);
+  })
+  .catch((error) => {
+    console.error("Failed to load forest ground:", error);
+  });
 
 // Load our boulder model once.
 loadRockModel()

@@ -12,15 +12,15 @@ export async function loadForestGround() {
   // Load all three textures at the same time.
   const [diffuseMap, normalMap, roughnessMap] = await Promise.all([
     textureLoader.loadAsync(
-      "/assets/textures/forest-ground/forrest_ground_01_diff_4k.jpg",
+      "/assets/textures/forest-ground/textures/forrest_ground_01_diff_2k.jpg",
     ),
 
     exrLoader.loadAsync(
-      "/assets/textures/forest-ground/forrest_ground_01_nor_gl_4k.exr",
+      "/assets/textures/forest-ground/textures/forrest_ground_01_nor_gl_2k.exr",
     ),
 
     textureLoader.loadAsync(
-      "/assets/textures/forest-ground/forrest_ground_01_rough_4k.jpg",
+      "/assets/textures/forest-ground/textures/forrest_ground_01_rough_2k.jpg",
     ),
   ]);
 
