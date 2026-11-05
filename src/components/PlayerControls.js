@@ -1,7 +1,7 @@
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import * as THREE from "three";
 
-export function PlayerControls(camera, domElement) {
+export function PlayerControls(camera, domElement, platformSurfaces = []) {
   const controls = new PointerLockControls(camera, domElement);
 
   // Mouse sensitivity
@@ -250,6 +250,34 @@ export function PlayerControls(camera, domElement) {
   const jumpStrength = 8;
   const eyeHeight = 1.7;
 
+  // All surfaces the player is allowed to land on.
+  const collisionSurfaces = [
+    // Original ground platform
+    {
+      x: 0,
+      z: 0,
+      width: 20,
+      depth: 20,
+      topY: 0,
+    },
+
+    // Our new elevated platforms
+    ...platformSurfaces,
+  ];
+
+  // Check whether the player's position is above a platform.
+  function isPlayerOverSurface(surface) {
+    const withinX =
+      camera.position.x >= surface.x - surface.width / 2 &&
+      camera.position.x <= surface.x + surface.width / 2;
+
+    const withinZ =
+      camera.position.z >= surface.z - surface.depth / 2 &&
+      camera.position.z <= surface.z + surface.depth / 2;
+
+    return withinX && withinZ;
+  }
+
   let verticalVelocity = 0;
   let isGrounded = true;
 
@@ -267,12 +295,49 @@ export function PlayerControls(camera, domElement) {
 
     // Apply gravity
     if (!isGrounded) {
+      // Remember where the player's feet were before falling.
+      const previousFeetY = camera.position.y - eyeHeight;
+
       verticalVelocity -= gravity * delta;
       camera.position.y += verticalVelocity * delta;
 
-      // Land on the platform
-      if (camera.position.y <= eyeHeight) {
-        camera.position.y = eyeHeight;
+      // Only check for landing while moving downward.
+      if (verticalVelocity <= 0) {
+        const currentFeetY = camera.position.y - eyeHeight;
+
+        let landingSurface = null;
+
+        // Check every platform.
+        for (const surface of collisionSurfaces) {
+          // Did the player cross the top of this platform?
+          const crossedSurface =
+            previousFeetY >= surface.topY && currentFeetY <= surface.topY;
+
+          // Is the player horizontally over the platform?
+          const overSurface = isPlayerOverSurface(surface);
+
+          if (
+            crossedSurface &&
+            overSurface &&
+            (!landingSurface || surface.topY > landingSurface.topY)
+          ) {
+            landingSurface = surface;
+          }
+        }
+
+        // Land on the highest surface we crossed.
+        if (landingSurface) {
+          camera.position.y = landingSurface.topY + eyeHeight;
+
+          verticalVelocity = 0;
+          isGrounded = true;
+        }
+      }
+
+      // Reset the player if they fall out of the world.
+      if (camera.position.y < -10) {
+        camera.position.set(0, eyeHeight, 5);
+
         verticalVelocity = 0;
         isGrounded = true;
       }
@@ -318,6 +383,23 @@ export function PlayerControls(camera, domElement) {
       -platformLimit,
       platformLimit,
     );
+
+    // Check whether the player still has a platform underneath them.
+    if (isGrounded) {
+      const playerFeetY = camera.position.y - eyeHeight;
+
+      const hasSupport = collisionSurfaces.some((surface) => {
+        const standingAtCorrectHeight =
+          Math.abs(playerFeetY - surface.topY) < 0.05;
+
+        return standingAtCorrectHeight && isPlayerOverSurface(surface);
+      });
+
+      // Start falling if the player walks off the platform.
+      if (!hasSupport) {
+        isGrounded = false;
+      }
+    }
   }
 
   return {

@@ -142,3 +142,64 @@ body.mobile-game .mobile-controls {
     right: calc(25px + env(safe-area-inset-right));
   }
 }
+
+
+/* Floating icon interaction message */
+
+.interaction-message {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 101;
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  width: min(calc(100% - 32px), 440px);
+  padding: 16px 20px;
+
+  border: 1px solid rgba(110, 231, 255, 0.55);
+  border-radius: 16px;
+
+  background: rgba(10, 28, 42, 0.9);
+  color: white;
+  text-align: center;
+  font-family: Arial, sans-serif;
+
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(12px);
+
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 12px);
+
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0.2s;
+
+  pointer-events: none;
+}
+
+.interaction-message strong {
+  font-size: 16px;
+}
+
+.interaction-message span {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.interaction-message.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+/* Keep the message above mobile controls. */
+body.mobile-game .interaction-message {
+  bottom: calc(145px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 32px), 360px);
+}

@@ -5,6 +5,8 @@ import camera from "./components/Camera.js";
 import renderer from "./components/Renderer.js";
 import directionalLight from "./components/DirectionalLight.js";
 import platform from "./components/Platform.js";
+import { createFloatingIcon } from "./components/FloatingIcon.js";
+import jumpPlatforms, { platformSurfaces } from "./components/JumpPlatforms.js";
 import "./style.css";
 
 // Get the application container
@@ -14,16 +16,38 @@ const app = document.querySelector("#app");
 app.appendChild(renderer.domElement);
 
 // Initialize first-person controls
-const playerControls = PlayerControls(camera, renderer.domElement);
+const playerControls = PlayerControls(
+  camera,
+  renderer.domElement,
+  platformSurfaces,
+);
 
 // Create a clock to track frame time
 const clock = new THREE.Clock();
 
 // Add lighting to the scene
 scene.add(directionalLight);
-
-// Add the platform
+// Add the original ground platform
 scene.add(platform);
+
+// Add all elevated jumping platforms
+scene.add(jumpPlatforms);
+
+// Original floating marker
+const centerMarker = createFloatingIcon(scene);
+
+// Second floating marker on the highest platform
+const topMarker = createFloatingIcon(scene, {
+  position: {
+    x: 1.8,
+    y: 4.5,
+    z: 2.3,
+  },
+
+  headingText: "You made it to the top!",
+
+  descriptionText: "You climbed all five platforms. Nice work!",
+});
 
 // Add some ambient lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -38,7 +62,6 @@ const material = new THREE.MeshStandardMaterial({
 
 const cube = new THREE.Mesh(geometry, material);
 
-
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
@@ -48,6 +71,13 @@ function animate() {
 
   // Update player movement
   playerControls.update(delta);
+
+  // Animate the icon and check player distance
+  // Update the original marker
+  centerMarker.update(camera, clock.elapsedTime);
+
+  // Update the top marker
+  topMarker.update(camera, clock.elapsedTime);
 
   // Render the scene
   renderer.render(scene, camera);
