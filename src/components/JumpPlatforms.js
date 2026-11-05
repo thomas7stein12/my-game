@@ -1,4 +1,3 @@
-
 import * as THREE from "three";
 
 // Group containing all of our elevated platforms.
@@ -25,6 +24,14 @@ const platformDefinitions = [
     depth: 3.2,
     topY: 1.8,
     color: 0x678bd4,
+
+    // This platform will use a boulder instead of a box.
+    useRock: true,
+
+    // Smaller collision area so the player lands near the
+    // center of the boulder's upper surface.
+    collisionWidth: 1.8,
+    collisionDepth: 1.8,
   },
   {
     x: 2.8,
@@ -52,40 +59,35 @@ const platformDefinitions = [
   },
 ];
 
-// Thickness of each platform.
+// Thickness of each rectangular platform.
 const thickness = 0.4;
 
 // Create every platform.
 platformDefinitions.forEach((data) => {
-  const geometry = new THREE.BoxGeometry(
-    data.width,
-    thickness,
-    data.depth,
-  );
+  // Only create a rectangular mesh if this isn't a rock platform.
+  if (!data.useRock) {
+    const geometry = new THREE.BoxGeometry(data.width, thickness, data.depth);
 
-  const material = new THREE.MeshStandardMaterial({
-    color: data.color,
-    roughness: 0.7,
-    metalness: 0.1,
-  });
+    const material = new THREE.MeshStandardMaterial({
+      color: data.color,
+      roughness: 0.7,
+      metalness: 0.1,
+    });
 
-  const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material);
 
-  // Position the platform so its top matches topY.
-  mesh.position.set(
-    data.x,
-    data.topY - thickness / 2,
-    data.z,
-  );
+    mesh.position.set(data.x, data.topY - thickness / 2, data.z);
 
-  platforms.add(mesh);
+    platforms.add(mesh);
+  }
 
-  // Save the platform's collision information.
+  // Save collision information for every platform,
+  // including the one that will be visually represented by a rock.
   platformSurfaces.push({
     x: data.x,
     z: data.z,
-    width: data.width,
-    depth: data.depth,
+    width: data.collisionWidth ?? data.width,
+    depth: data.collisionDepth ?? data.depth,
     topY: data.topY,
   });
 });

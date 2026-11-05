@@ -7,6 +7,7 @@ import directionalLight from "./components/DirectionalLight.js";
 import platform from "./components/Platform.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
 import jumpPlatforms, { platformSurfaces } from "./components/JumpPlatforms.js";
+import { loadRockModel, addRock } from "./components/Rock.js";
 import "./style.css";
 
 // Get the application container
@@ -27,8 +28,34 @@ const clock = new THREE.Clock();
 
 // Add lighting to the scene
 scene.add(directionalLight);
+
 // Add the original ground platform
 scene.add(platform);
+
+// Load our boulder model.
+loadRockModel()
+  .then((rockModel) => {
+    // Replace the second jumping platform with a boulder.
+    addRock(scene, rockModel, {
+      position: {
+        x: 0,
+        y: 0,
+        z: -2,
+      },
+
+      // Make the boulder slightly larger.
+      scale: 1.3,
+
+      // Give it a natural-looking rotation.
+      rotationY: 0.45,
+
+      // Align the top of the boulder with its collision surface.
+      topY: 1.8,
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to load boulder:", error);
+  });
 
 // Add all elevated jumping platforms
 scene.add(jumpPlatforms);
