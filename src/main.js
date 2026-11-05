@@ -6,8 +6,11 @@ import renderer from "./components/Renderer.js";
 import directionalLight from "./components/DirectionalLight.js";
 import platform from "./components/Platform.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
-import jumpPlatforms, { platformSurfaces } from "./components/JumpPlatforms.js";
-import { loadRockModel, addRock } from "./components/Rock.js";
+import jumpPlatforms, {
+  platformSurfaces,
+  platformDefinitions,
+} from "./components/JumpPlatforms.js";
+import { loadRockModel, addRock, addRockSupport } from "./components/Rock.js";
 import "./style.css";
 
 // Get the application container
@@ -32,29 +35,44 @@ scene.add(directionalLight);
 // Add the original ground platform
 scene.add(platform);
 
-// Load our boulder model.
+// Load our boulder model once.
 loadRockModel()
   .then((rockModel) => {
-    // Replace the second jumping platform with a boulder.
-    addRock(scene, rockModel, {
-      position: {
-        x: 0,
-        y: 0,
-        z: -2,
-      },
+    // Create a boulder for every jumping platform.
+    platformDefinitions.forEach((data) => {
+      // Add decorative support rocks underneath higher platforms.
+      // These rocks are purely visual and have no collision.
+      if (data.addSupportRocks) {
+        addRockSupport(scene, rockModel, {
+          position: {
+            x: data.x,
+            z: data.z,
+          },
 
-      // Make the boulder slightly larger.
-      scale: 1.3,
+          topY: data.topY,
+          scale: data.rockScale,
+          rotationY: data.rockRotationY,
+        });
+      }
 
-      // Give it a natural-looking rotation.
-      rotationY: 0.45,
+      // Add the playable boulder on top.
+      addRock(scene, rockModel, {
+        position: {
+          x: data.x,
+          y: 0,
+          z: data.z,
+        },
 
-      // Align the top of the boulder with its collision surface.
-      topY: 1.8,
+        scale: data.rockScale,
+        rotationY: data.rockRotationY,
+
+        // Align the rock with its collision surface.
+        topY: data.topY,
+      });
     });
   })
   .catch((error) => {
-    console.error("Failed to load boulder:", error);
+    console.error("Failed to load boulder models:", error);
   });
 
 // Add all elevated jumping platforms
