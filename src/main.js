@@ -8,6 +8,7 @@ import { loadForestGround } from "./components/ForestGround.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
 import { loadForestEnvironment } from "./components/ForestEnvironment.js";
 import { loadBoundaryBarriers } from "./components/BoundaryBarriers.js";
+import { loadForestTrees } from "./components/ForestTrees.js";
 import jumpPlatforms, {
   platformSurfaces,
   platformDefinitions,
@@ -71,6 +72,15 @@ loadBoundaryBarriers()
   })
   .catch((error) => {
     console.error("Failed to load boundary barriers:", error);
+  });
+
+// Load our surrounding forest trees.
+loadForestTrees()
+  .then((trees) => {
+    scene.add(trees);
+  })
+  .catch((error) => {
+    console.error("Failed to load forest trees:", error);
   });
 
 // Load our boulder model once.

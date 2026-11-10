@@ -8,7 +8,7 @@ const loader = new GLTFLoader();
 export function loadRockModel() {
   return loader
     .loadAsync(
-      "/assets/models/namaqualand-boulder/namaqualand_boulder_03_2k.gltf",
+      "/assets/models/namaqualand-boulder/namaqualand_boulder_03_1k.gltf",
     )
     .then((gltf) => {
       const rockModel = gltf.scene;

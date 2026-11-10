@@ -7,7 +7,7 @@ const loader = new GLTFLoader();
 // Load and create barriers around the playable area.
 export async function loadBoundaryBarriers() {
   const gltf = await loader.loadAsync(
-    "/assets/models/concrete-road-barrier.gltf/concrete_road_barrier_2k.gltf",
+    "/assets/models/concrete-road-barrier.gltf/concrete_road_barrier_1k.gltf",
   );
 
   // Keep the original model so we can clone it.

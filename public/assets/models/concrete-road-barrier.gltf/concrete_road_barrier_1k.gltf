@@ -1,6 +1,6 @@
 {
   "asset": {
-    "generator": "Khronos glTF Blender I/O v4.2.57",
+    "generator": "Khronos glTF Blender I/O v3.6.27",
     "version": "2.0"
   },
   "scene": 0,
@@ -15,13 +15,13 @@
   "nodes": [
     {
       "mesh": 0,
-      "name": "boulder_03_LOD0"
+      "name": "concrete_road_barrier"
     }
   ],
   "materials": [
     {
       "doubleSided": true,
-      "name": "boulder_03",
+      "name": "concrete_road_barrier",
       "normalTexture": {
         "index": 0
       },
@@ -38,7 +38,7 @@
   ],
   "meshes": [
     {
-      "name": "realCap_Model_2",
+      "name": "RetopoFlow.006",
       "primitives": [
         {
           "attributes": {
@@ -69,79 +69,79 @@
   "images": [
     {
       "mimeType": "image/jpeg",
-      "name": "boulder_03_nor_gl",
-      "uri": "textures/namaqualand_boulder_03_nor_gl_2k.jpg"
+      "name": "concrete_road_barrier_nor_gl",
+      "uri": "textures/concrete_road_barrier_nor_gl_1k.jpg"
     },
     {
       "mimeType": "image/jpeg",
-      "name": "boulder_03_diff",
-      "uri": "textures/namaqualand_boulder_03_diff_2k.jpg"
+      "name": "concrete_road_barrier_diff",
+      "uri": "textures/concrete_road_barrier_diff_1k.jpg"
     },
     {
       "mimeType": "image/jpeg",
-      "name": "boulder_03_rough",
-      "uri": "textures/namaqualand_boulder_03_arm_2k.jpg"
+      "name": "concrete_road_barrier_rough",
+      "uri": "textures/concrete_road_barrier_arm_1k.jpg"
     }
   ],
   "accessors": [
     {
       "bufferView": 0,
       "componentType": 5126,
-      "count": 33166,
+      "count": 31514,
       "max": [
-        1.3522862195968628,
-        1.4584896564483643,
-        1.6758253574371338
+        0.7707335948944092,
+        0.8226187229156494,
+        0.3439931571483612
       ],
       "min": [
-        -1.054810881614685,
-        -0.014703452587127686,
-        -1.3895807266235352
+        -0.774623453617096,
+        -0.008429879322648048,
+        -0.2947474718093872
       ],
       "type": "VEC3"
     },
     {
       "bufferView": 1,
       "componentType": 5126,
-      "count": 33166,
+      "count": 31514,
       "type": "VEC3"
     },
     {
       "bufferView": 2,
       "componentType": 5126,
-      "count": 33166,
+      "count": 31514,
       "type": "VEC2"
     },
     {
       "bufferView": 3,
       "componentType": 5123,
-      "count": 194478,
+      "count": 182784,
       "type": "SCALAR"
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
-      "byteLength": 397992,
+      "byteLength": 378168,
       "byteOffset": 0,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 397992,
-      "byteOffset": 397992,
+      "byteLength": 378168,
+      "byteOffset": 378168,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 265328,
-      "byteOffset": 795984,
+      "byteLength": 252112,
+      "byteOffset": 756336,
       "target": 34962
     },
     {
       "buffer": 0,
-      "byteLength": 388956,
-      "byteOffset": 1061312,
+      "byteLength": 365568,
+      "byteOffset": 1008448,
       "target": 34963
     }
   ],
@@ -153,8 +153,8 @@
   ],
   "buffers": [
     {
-      "byteLength": 1450268,
-      "uri": "namaqualand_boulder_03.bin"
+      "byteLength": 1374016,
+      "uri": "concrete_road_barrier.bin"
     }
   ]
 }
