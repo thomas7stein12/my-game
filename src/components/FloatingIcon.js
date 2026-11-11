@@ -86,6 +86,10 @@ export function createFloatingIcon(scene, options = {}) {
 
   badge.position.y = 0.65;
   badge.scale.set(0.85, 0.85, 1);
+
+  // Render the question mark after the fog overlay.
+  badge.renderOrder = 1;
+
   floatingGroup.add(badge);
 
   // Small light surrounding the icon

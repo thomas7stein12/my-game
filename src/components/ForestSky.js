@@ -54,6 +54,9 @@ export function createForestSkyFog(fogColor) {
 
   const fogOverlay = new THREE.Mesh(geometry, material);
 
+  // Render the fog before transparent checkpoint icons.
+  fogOverlay.renderOrder = -1;
+
   // Keep the sphere around the player.
   fogOverlay.frustumCulled = false;
 
