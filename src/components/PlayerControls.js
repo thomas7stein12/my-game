@@ -9,6 +9,27 @@ export function PlayerControls(
 ) {
   const controls = new PointerLockControls(camera, domElement);
 
+  // Background music
+  const backgroundMusic = new Audio("/audio/forest-ambience.m4a");
+
+  // Keep the music looping.
+  backgroundMusic.loop = true;
+
+  // Set background music volume.
+  backgroundMusic.volume = 0.25;
+
+  // Start playing the music.
+  function startBackgroundMusic() {
+    backgroundMusic.play().catch((error) => {
+      console.warn("Background music could not start:", error);
+    });
+  }
+
+  // Pause the music when the player leaves.
+  function stopBackgroundMusic() {
+    backgroundMusic.pause();
+  }
+
   // Mouse sensitivity
   controls.pointerSpeed = 1;
   controls.minPolarAngle = 0.15;
@@ -21,7 +42,17 @@ export function PlayerControls(
 
   if (isTouchDevice) {
     document.body.classList.add("mobile-game");
+
+    // Start music when the player first interacts.
+    document.addEventListener("pointerdown", startBackgroundMusic);
   }
+
+  // Pause music when the player leaves the browser tab.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopBackgroundMusic();
+    }
+  });
 
   // Track keyboard input
   const keys = new Set();
@@ -213,6 +244,7 @@ export function PlayerControls(
     // Desktop: click to lock the mouse
     domElement.addEventListener("click", () => {
       if (!controls.isLocked) {
+        startBackgroundMusic();
         controls.lock();
       }
     });
@@ -244,6 +276,7 @@ export function PlayerControls(
 
   controls.addEventListener("unlock", () => {
     keys.clear();
+    stopBackgroundMusic();
   });
 
   // Movement settings
