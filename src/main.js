@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { PlayerControls } from "./components/PlayerControls.js";
-import scene from "./components/Scene.js";
+import scene, { fogColor } from "./components/Scene.js";
 import camera from "./components/Camera.js";
 import renderer from "./components/Renderer.js";
 import directionalLight from "./components/DirectionalLight.js";
@@ -9,6 +9,7 @@ import { createFloatingIcon } from "./components/FloatingIcon.js";
 import { loadForestEnvironment } from "./components/ForestEnvironment.js";
 import { loadBoundaryBarriers } from "./components/BoundaryBarriers.js";
 import { loadForestTrees } from "./components/ForestTrees.js";
+import { createForestSkyFog } from "./components/ForestSky.js";
 import jumpPlatforms, {
   platformSurfaces,
   platformDefinitions,
@@ -41,6 +42,9 @@ const playerControls = PlayerControls(
 // Create a clock to track frame time
 const clock = new THREE.Clock();
 
+// Store the fog layer that hides the sky near the horizon.
+let skyFogOverlay = null;
+
 // Add lighting to the scene
 scene.add(directionalLight);
 
@@ -56,9 +60,15 @@ loadForestGround()
 // Load our forest environment.
 loadForestEnvironment()
   .then((environmentMap) => {
-    // Keep the HDR environment for lighting and reflections.
-    // The visible background now uses our forest fog color.
+    // Use the HDR environment for natural lighting and reflections.
     scene.environment = environmentMap;
+
+    // Use the HDR environment as the visible sky.
+    scene.background = environmentMap;
+
+    // Add the fog layer that hides the sky when looking through the trees.
+    skyFogOverlay = createForestSkyFog(fogColor);
+    scene.add(skyFogOverlay);
   })
   .catch((error) => {
     console.error("Failed to load forest environment:", error);
@@ -177,6 +187,11 @@ function animate() {
 
   // Update the top marker
   topMarker.update(camera, clock.elapsedTime);
+
+  // Keep the sky fog centered on the player.
+  if (skyFogOverlay) {
+    skyFogOverlay.position.copy(camera.position);
+  }
 
   // Render the scene
   renderer.render(scene, camera);
