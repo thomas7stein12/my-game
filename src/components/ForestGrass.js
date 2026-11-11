@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Create our grass model loader.
 const loader = new GLTFLoader();
@@ -17,7 +18,6 @@ function createRandom(seed = 24680) {
 }
 
 // Convert quantized vertex attributes to floating-point values.
-// This prevents small transformations from truncating vertex positions.
 function convertVectorAttributeToFloat(geometry, attributeName) {
   const attribute = geometry.getAttribute(attributeName);
 
@@ -33,12 +33,13 @@ function convertVectorAttributeToFloat(geometry, attributeName) {
     values[i * 3 + 2] = attribute.getZ(i);
   }
 
-  const floatAttribute = new THREE.Float32BufferAttribute(values, 3);
-
-  geometry.setAttribute(attributeName, floatAttribute);
+  geometry.setAttribute(
+    attributeName,
+    new THREE.Float32BufferAttribute(values, 3),
+  );
 }
 
-// Calculate the horizontal footprint of an individual grass clump.
+// Calculate the horizontal footprint of a geometry.
 function getGrassFootprint(geometry) {
   const bounds = geometry.boundingBox;
 
@@ -46,29 +47,126 @@ function getGrassFootprint(geometry) {
 
   const maxZ = Math.max(Math.abs(bounds.min.z), Math.abs(bounds.max.z));
 
-  // Account for rotation when checking the boundary.
   return Math.hypot(maxX, maxZ);
+}
+
+// Create eight reusable grass cluster designs.
+function createGrassClusters(grassVariants, random) {
+  // Ignore the six extremely tiny grass variations.
+  const usableVariants = grassVariants.filter(
+    (variant) => !variant.name.toLowerCase().includes("tiny"),
+  );
+
+  if (usableVariants.length === 0) {
+    throw new Error("No usable grass variations were found.");
+  }
+
+  const clusterCount = 8;
+  const piecesPerCluster = 4;
+
+  const clusterVariants = [];
+
+  // Reusable transformation objects.
+  const up = new THREE.Vector3(0, 1, 0);
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  const scaleVector = new THREE.Vector3();
+  const matrix = new THREE.Matrix4();
+
+  for (let clusterIndex = 0; clusterIndex < clusterCount; clusterIndex++) {
+    const pieces = [];
+
+    // Assemble four different grass models into one cluster.
+    for (let pieceIndex = 0; pieceIndex < piecesPerCluster; pieceIndex++) {
+      // Select a full-size grass variation.
+      const variantIndex = Math.floor(random() * usableVariants.length);
+
+      const variant = usableVariants[variantIndex];
+
+      // Make individual grass models larger.
+      const plantScale = 2.1 + random() * 0.7;
+
+      // Position one plant in the middle and the others around it.
+      const angle =
+        ((pieceIndex - 1) * Math.PI * 2) / (piecesPerCluster - 1) +
+        (random() - 0.5) * 0.7;
+
+      const spread = pieceIndex === 0 ? 0 : 0.12 + random() * 0.16;
+
+      // Clone the original grass geometry.
+      const geometry = variant.geometry.clone();
+
+      // Position the bottom of the grass at ground level.
+      position.set(
+        Math.cos(angle) * spread,
+        -variant.minY * plantScale,
+        Math.sin(angle) * spread,
+      );
+
+      // Randomize the direction of each plant.
+      quaternion.setFromAxisAngle(up, random() * Math.PI * 2);
+
+      scaleVector.setScalar(plantScale);
+
+      matrix.compose(position, quaternion, scaleVector);
+
+      geometry.applyMatrix4(matrix);
+
+      pieces.push(geometry);
+    }
+
+    // Merge all four grass models into one geometry.
+    const mergedGeometry = mergeGeometries(pieces, false);
+
+    // Release the temporary geometry copies.
+    pieces.forEach((geometry) => geometry.dispose());
+
+    if (!mergedGeometry) {
+      throw new Error("Could not merge the grass cluster geometries.");
+    }
+
+    // Center the cluster horizontally.
+    mergedGeometry.computeBoundingBox();
+
+    const center = new THREE.Vector3();
+
+    mergedGeometry.boundingBox.getCenter(center);
+
+    mergedGeometry.translate(-center.x, 0, -center.z);
+
+    // Calculate the final cluster bounds.
+    mergedGeometry.computeBoundingBox();
+    mergedGeometry.computeBoundingSphere();
+
+    clusterVariants.push({
+      geometry: mergedGeometry,
+      footprintRadius: getGrassFootprint(mergedGeometry),
+    });
+  }
+
+  return clusterVariants;
 }
 
 // Load and distribute grass throughout the playable world.
 export async function loadForestGrass() {
+  // Use the already-tested optimized grass model.
   const gltf = await loader.loadAsync(
-    "/assets/models/grass_medium_01_1k.gltf/grass_medium_01_40pct_kn.glb",
+    "/assets/models/grass_medium_01_1k.gltf/grass_medium_01_15pct_kn.glb",
   );
 
   const grassModel = gltf.scene;
 
   grassModel.updateMatrixWorld(true);
 
-  const inverseRoot = grassModel.matrixWorld.clone().invert();
-
-  // Collect the individual grass variations.
   const grassVariants = [];
 
   let sourceMaterial = null;
 
+  // Extract all individual grass variations.
   grassModel.traverse((child) => {
     if (!child.isMesh) return;
+
+    const variantRoot = child.parent;
 
     const childMaterial = Array.isArray(child.material)
       ? child.material[0]
@@ -78,55 +176,61 @@ export async function loadForestGrass() {
       sourceMaterial = childMaterial;
     }
 
-    // Preserve the mesh's rotation and scale, but remove
-    // its original position in the 17-mesh grass arrangement.
+    // Get the mesh transformation relative to its own variant root.
+    // This preserves the mesh's internal translation and scale
+    // without retaining its original side-by-side arrangement.
+    const inverseVariantRoot = variantRoot.matrixWorld.clone().invert();
+
     const localMatrix = new THREE.Matrix4().multiplyMatrices(
-      inverseRoot,
+      inverseVariantRoot,
       child.matrixWorld,
     );
-
-    localMatrix.setPosition(0, 0, 0);
 
     // Clone the original geometry.
     const geometry = child.geometry.clone();
 
-    // Convert quantized positions and normals before applying transforms.
+    // Prevent quantized positions from being truncated.
     convertVectorAttributeToFloat(geometry, "position");
     convertVectorAttributeToFloat(geometry, "normal");
 
-    // Now apply the original model transformations safely.
+    // Apply the model's actual transformation.
     geometry.applyMatrix4(localMatrix);
 
-    // Calculate the actual grass dimensions.
+    // Calculate the original dimensions.
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    // Center the grass horizontally without changing its height.
+    const center = new THREE.Vector3();
+
+    geometry.boundingBox.getCenter(center);
+
+    geometry.translate(-center.x, 0, -center.z);
+
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
 
     const bounds = geometry.boundingBox;
 
-    const dimensions = new THREE.Vector3();
-    bounds.getSize(dimensions);
-
-    console.log(`Grass variation: ${child.parent?.name}`, dimensions.toArray());
-
     grassVariants.push({
-      name: child.name,
+      name: variantRoot.name || child.name,
       geometry,
       minY: bounds.min.y,
-      footprintRadius: getGrassFootprint(geometry),
     });
   });
 
-  if (!sourceMaterial?.map || grassVariants.length === 0) {
-    throw new Error("Could not load the grass model correctly.");
+  if (!sourceMaterial?.map || grassVariants.length !== 17) {
+    throw new Error(
+      `Expected 17 grass variations but found ${grassVariants.length}.`,
+    );
   }
 
-  // Keep the original color texture.
+  // Keep the existing grass color texture.
   const grassMap = sourceMaterial.map;
 
   grassMap.colorSpace = THREE.SRGBColorSpace;
 
-  // Release the unused normal and roughness textures.
-  // Grass is small enough that these maps are unnecessary.
+  // Release unused texture maps.
   const unusedTextures = new Set([
     sourceMaterial.normalMap,
     sourceMaterial.roughnessMap,
@@ -140,128 +244,230 @@ export async function loadForestGrass() {
     }
   });
 
+  // Release the original material.
   sourceMaterial.dispose();
 
-  // We have already copied the geometry we need.
+  // We have independent copies of all the source geometry.
   grassModel.traverse((child) => {
     if (child.isMesh) {
       child.geometry.dispose();
     }
   });
 
-  // Create one shared material for all grass variations.
+  // Generate consistent randomness for the distribution.
+  const random = createRandom();
+
+  // Build our eight reusable cluster geometries.
+  const clusterVariants = createGrassClusters(grassVariants, random);
+
+  // Release the original individual grass geometries.
+  grassVariants.forEach((variant) => {
+    variant.geometry.dispose();
+  });
+
+  // One shared material for all grass clusters.
   const grassMaterial = new THREE.MeshStandardMaterial({
     map: grassMap,
     color: 0xffffff,
     roughness: 1,
     metalness: 0,
-
-    // Grass blades should be visible from both directions.
     side: THREE.DoubleSide,
-
-    // Avoid expensive transparent-object sorting.
     transparent: false,
     depthWrite: true,
   });
 
   const grassGroup = new THREE.Group();
+
   grassGroup.name = "Forest Grass";
 
-  // Boundary settings from BoundaryBarriers.js.
+  // The ground is 100 x 100, extending 50 units from the center.
+  const groundHalfSize = 50;
+
+  // The inside of the playable area.
   const boundary = 9.8;
-  const edgeClearance = 0.45;
 
-  // Distribution settings.
-  const cellSpacing = 0.48;
-  const spawnChance = 0.88;
+  // Keep grass away from the outer edge of the ground.
+  const edgeClearance = 0.65;
 
-  const random = createRandom();
+  // Distribution density.
+  const outerSpacing = 1.45;
+  const innerSpacing = 0.72;
 
-  // Store individual grass placements by model variation.
-  const placements = grassVariants.map(() => []);
+  // Larger clusters create better ground coverage.
+  const minimumClusterScale = 0.90;
+  const maximumClusterScale = 1.45;
 
-  const start = -boundary + edgeClearance;
-  const end = boundary - edgeClearance;
+  // Divide the world into independently culled sections.
+  const chunkSize = 25;
 
-  // Create an evenly distributed grid with randomized positions.
-  for (let z = start; z <= end; z += cellSpacing) {
-    for (let x = start; x <= end; x += cellSpacing) {
-      // Leave occasional small gaps for a more natural appearance.
-      if (random() > spawnChance) continue;
+  // Find the largest cluster footprint.
+  const largestFootprint = Math.max(
+    ...clusterVariants.map((cluster) => cluster.footprintRadius),
+  );
 
-      // Select one of the 17 different grass variations.
-      const variantIndex = Math.floor(random() * grassVariants.length);
+  // Calculate safe distribution limits.
+  function getSafeLimit(areaLimit, spacing) {
+    const maximumJitter = spacing * 0.225;
 
-      const variant = grassVariants[variantIndex];
-
-      // Randomize grass size and rotation.
-      const scale = 0.8 + random() * 0.45;
-      const rotationY = random() * Math.PI * 2;
-
-      // Calculate how close this particular grass model
-      // can safely get to the boundary.
-      const maximumCenter =
-        boundary - edgeClearance - variant.footprintRadius * scale;
-
-      // Slightly randomize the grid positions.
-      const jitterX = (random() - 0.5) * cellSpacing * 0.75;
-      const jitterZ = (random() - 0.5) * cellSpacing * 0.75;
-
-      const grassX = THREE.MathUtils.clamp(
-        x + jitterX,
-        -maximumCenter,
-        maximumCenter,
-      );
-
-      const grassZ = THREE.MathUtils.clamp(
-        z + jitterZ,
-        -maximumCenter,
-        maximumCenter,
-      );
-
-      placements[variantIndex].push({
-        x: grassX,
-        z: grassZ,
-        y: -variant.minY * scale,
-        scale,
-        rotationY,
-      });
-    }
+    return (
+      areaLimit -
+      edgeClearance -
+      largestFootprint * maximumClusterScale -
+      maximumJitter
+    );
   }
 
-  // Reusable transformation objects.
+  // Safe placement limits for the entire ground and playable area.
+  const outerSafeLimit = getSafeLimit(groundHalfSize, outerSpacing);
+
+  const innerSafeLimit = getSafeLimit(boundary, innerSpacing);
+
+  if (outerSafeLimit <= 0 || innerSafeLimit <= 0) {
+    throw new Error("Grass distribution area is too small.");
+  }
+
+  // Organize grass instances by spatial chunk and cluster design.
+  const chunkBatches = new Map();
+
+  // Add an individual cluster to the appropriate spatial section.
+  function addGrassCluster(baseX, baseZ, spacing, areaLimit) {
+    const clusterIndex = Math.floor(random() * clusterVariants.length);
+
+    const cluster = clusterVariants[clusterIndex];
+
+    // Randomize overall cluster size.
+    const scale =
+      minimumClusterScale +
+      random() * (maximumClusterScale - minimumClusterScale);
+
+    const rotationY = random() * Math.PI * 2;
+
+    // Natural variation in positioning.
+    const jitterX = (random() - 0.5) * spacing * 0.45;
+    const jitterZ = (random() - 0.5) * spacing * 0.45;
+
+    // Keep the entire cluster inside its allowed area.
+    const maximumCenter =
+      areaLimit - edgeClearance - cluster.footprintRadius * scale;
+
+    const x = THREE.MathUtils.clamp(
+      baseX + jitterX,
+      -maximumCenter,
+      maximumCenter,
+    );
+
+    const z = THREE.MathUtils.clamp(
+      baseZ + jitterZ,
+      -maximumCenter,
+      maximumCenter,
+    );
+
+    // Determine which 25 x 25 section contains this cluster.
+    const chunkX = Math.floor((x + groundHalfSize) / chunkSize);
+
+    const chunkZ = Math.floor((z + groundHalfSize) / chunkSize);
+
+    // Group by chunk and cluster design.
+    const batchKey = `${chunkX}|${chunkZ}|${clusterIndex}`;
+
+    if (!chunkBatches.has(batchKey)) {
+      chunkBatches.set(batchKey, []);
+    }
+
+    chunkBatches.get(batchKey).push({
+      x,
+      z,
+      scale,
+      rotationY,
+    });
+  }
+
+  // Create a centered grid using a maximum spacing.
+  function getGridSettings(limit, maximumSpacing) {
+    const cells = Math.max(2, Math.ceil((limit * 2) / maximumSpacing) + 1);
+
+    return {
+      cells,
+      spacing: (limit * 2) / (cells - 1),
+    };
+  }
+
+  // Outer grass: more open, but randomly scattered.
+for (let x = -outerSafeLimit; x <= outerSafeLimit; x += outerSpacing) {
+  for (let z = -outerSafeLimit; z <= outerSafeLimit; z += outerSpacing) {
+    // Leave some naturally occurring gaps.
+    if (random() < 0.18) continue;
+
+    // Move each cluster away from its regular grid position.
+    const scatteredX = x + (random() - 0.5) * outerSpacing * 1.35;
+    const scatteredZ = z + (random() - 0.5) * outerSpacing * 1.35;
+
+    // Keep the outer grass outside the barrier area.
+    if (
+      Math.max(Math.abs(scatteredX), Math.abs(scatteredZ)) <
+      boundary - outerSpacing * 0.5
+    ) {
+      continue;
+    }
+
+    addGrassCluster(
+      scatteredX,
+      scatteredZ,
+      outerSpacing,
+      groundHalfSize - edgeClearance
+    );
+  }
+}
+
+// Inner grass: denser, with smaller gaps.
+for (let x = -innerSafeLimit; x <= innerSafeLimit; x += innerSpacing) {
+  for (let z = -innerSafeLimit; z <= innerSafeLimit; z += innerSpacing) {
+    if (random() < 0.08) continue;
+
+    const scatteredX = x + (random() - 0.5) * innerSpacing * 1.2;
+    const scatteredZ = z + (random() - 0.5) * innerSpacing * 1.2;
+
+    addGrassCluster(scatteredX, scatteredZ, innerSpacing, boundary);
+  }
+}
+
+  // --------------------------------------------------
+  // CREATE SPATIALLY CHUNKED INSTANCED GRASS.
+  // --------------------------------------------------
+
   const up = new THREE.Vector3(0, 1, 0);
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   const scaleVector = new THREE.Vector3();
   const matrix = new THREE.Matrix4();
 
-  let totalGrass = 0;
+  let totalClusters = 0;
+  let totalTriangles = 0;
 
-  // Create one InstancedMesh per grass variation.
-  // This keeps the draw-call count very low.
-  grassVariants.forEach((variant, variantIndex) => {
-    const grassPlacements = placements[variantIndex];
+  // Create separate InstancedMeshes for each cluster design
+  // inside each spatial chunk.
+  chunkBatches.forEach((placements, key) => {
+    const [chunkX, chunkZ, clusterIndex] = key.split("|").map(Number);
 
-    if (grassPlacements.length === 0) return;
+    const cluster = clusterVariants[clusterIndex];
 
     const instancedMesh = new THREE.InstancedMesh(
-      variant.geometry,
+      cluster.geometry,
       grassMaterial,
-      grassPlacements.length,
+      placements.length,
     );
 
-    instancedMesh.name = `${variant.name} Instances`;
+    instancedMesh.name = `Grass Chunk ${chunkX}-${chunkZ} Variant ${clusterIndex}`;
 
     // Grass does not need shadows.
     instancedMesh.castShadow = false;
     instancedMesh.receiveShadow = false;
 
-    // These positions never change after creation.
+    // These instances never move.
     instancedMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
-    grassPlacements.forEach((grass, index) => {
-      position.set(grass.x, grass.y, grass.z);
+    placements.forEach((grass, index) => {
+      position.set(grass.x, 0, grass.z);
 
       quaternion.setFromAxisAngle(up, grass.rotationY);
 
@@ -274,17 +480,28 @@ export async function loadForestGrass() {
 
     instancedMesh.instanceMatrix.needsUpdate = true;
 
-    // Calculate bounds for frustum culling.
+    // Calculate bounds separately for each section.
     instancedMesh.computeBoundingBox();
     instancedMesh.computeBoundingSphere();
 
     grassGroup.add(instancedMesh);
 
-    totalGrass += grassPlacements.length;
+    const index = cluster.geometry.getIndex();
+
+    const trianglesPerCluster = index
+      ? index.count / 3
+      : cluster.geometry.getAttribute("position").count / 3;
+
+    totalTriangles += trianglesPerCluster * placements.length;
+
+    totalClusters += placements.length;
   });
 
   console.log(
-    `Forest grass created: ${totalGrass} individual clumps across ${grassVariants.length} variations.`,
+    `Forest grass created: ${totalClusters} clusters, ` +
+      `${totalClusters * 4} individual plants, ` +
+      `${totalTriangles.toLocaleString()} total triangles, ` +
+      `${chunkBatches.size} spatial batches.`,
   );
 
   return grassGroup;
