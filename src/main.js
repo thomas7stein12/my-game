@@ -10,6 +10,7 @@ import { loadForestEnvironment } from "./components/ForestEnvironment.js";
 import { loadBoundaryBarriers } from "./components/BoundaryBarriers.js";
 import { loadForestTrees } from "./components/ForestTrees.js";
 import { createForestSkyFog } from "./components/ForestSky.js";
+import { loadForestGrass } from "./components/ForestGrass.js";
 import jumpPlatforms, {
   platformSurfaces,
   platformDefinitions,
@@ -90,6 +91,15 @@ loadForestTrees()
   })
   .catch((error) => {
     console.error("Failed to load forest trees:", error);
+  });
+
+// Load grass throughout the playable area.
+loadForestGrass()
+  .then((grass) => {
+    scene.add(grass);
+  })
+  .catch((error) => {
+    console.error("Failed to load forest grass:", error);
   });
 
 // Load our boulder model once.
