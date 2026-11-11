@@ -16,6 +16,28 @@ function createRandom(seed = 24680) {
   };
 }
 
+// Convert quantized vertex attributes to floating-point values.
+// This prevents small transformations from truncating vertex positions.
+function convertVectorAttributeToFloat(geometry, attributeName) {
+  const attribute = geometry.getAttribute(attributeName);
+
+  if (!attribute || attribute.array instanceof Float32Array) {
+    return;
+  }
+
+  const values = new Float32Array(attribute.count * 3);
+
+  for (let i = 0; i < attribute.count; i++) {
+    values[i * 3] = attribute.getX(i);
+    values[i * 3 + 1] = attribute.getY(i);
+    values[i * 3 + 2] = attribute.getZ(i);
+  }
+
+  const floatAttribute = new THREE.Float32BufferAttribute(values, 3);
+
+  geometry.setAttribute(attributeName, floatAttribute);
+}
+
 // Calculate the horizontal footprint of an individual grass clump.
 function getGrassFootprint(geometry) {
   const bounds = geometry.boundingBox;
@@ -65,12 +87,26 @@ export async function loadForestGrass() {
 
     localMatrix.setPosition(0, 0, 0);
 
-    const geometry = child.geometry.clone().applyMatrix4(localMatrix);
+    // Clone the original geometry.
+    const geometry = child.geometry.clone();
 
+    // Convert quantized positions and normals before applying transforms.
+    convertVectorAttributeToFloat(geometry, "position");
+    convertVectorAttributeToFloat(geometry, "normal");
+
+    // Now apply the original model transformations safely.
+    geometry.applyMatrix4(localMatrix);
+
+    // Calculate the actual grass dimensions.
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
 
     const bounds = geometry.boundingBox;
+
+    const dimensions = new THREE.Vector3();
+    bounds.getSize(dimensions);
+
+    console.log(`Grass variation: ${child.parent?.name}`, dimensions.toArray());
 
     grassVariants.push({
       name: child.name,
