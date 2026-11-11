@@ -56,9 +56,8 @@ loadForestGround()
 // Load our forest environment.
 loadForestEnvironment()
   .then((environmentMap) => {
-    scene.background = environmentMap;
-
-    // Use the HDR environment for natural lighting and reflections.
+    // Keep the HDR environment for lighting and reflections.
+    // The visible background now uses our forest fog color.
     scene.environment = environmentMap;
   })
   .catch((error) => {

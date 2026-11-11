@@ -16,6 +16,31 @@ function createRandom(seed = 12345) {
   };
 }
 
+// Share materials between detail levels of the same tree.
+// Both models were generated from the same original asset.
+function shareTreeMaterials(highDetail, lowDetail) {
+  let highMesh = null;
+  let lowMesh = null;
+
+  highDetail.traverse((child) => {
+    if (child.isMesh) highMesh = child;
+  });
+
+  lowDetail.traverse((child) => {
+    if (child.isMesh) lowMesh = child;
+  });
+
+  if (!highMesh || !lowMesh) {
+    throw new Error("Could not find tree meshes to share materials.");
+  }
+
+  highMesh.updateMatrixWorld(true);
+  lowMesh.updateMatrixWorld(true);
+
+  // Both models have the same six material groups.
+  lowMesh.material = highMesh.material;
+}
+
 // Create instanced copies of a tree model.
 function addInstancedTrees(forestGroup, model, placements, name) {
   if (placements.length === 0) return;
@@ -26,21 +51,20 @@ function addInstancedTrees(forestGroup, model, placements, name) {
   // Calculate the inverse of the model's root transformation.
   const inverseRoot = model.matrixWorld.clone().invert();
 
-  // Calculate the tree's actual bounds relative to its root.
+  // Calculate the tree's actual dimensions.
   const bounds = new THREE.Box3()
     .setFromObject(model)
     .applyMatrix4(inverseRoot);
 
-  // Store the height adjustment needed to put trees on the ground.
+  // Height adjustment needed to put trees on the ground.
   const groundOffset = -bounds.min.y;
 
-  // Group meshes that share the same geometry and materials.
+  // Group meshes that share geometry and materials.
   const meshBuckets = new Map();
 
   model.traverse((child) => {
     if (!child.isMesh) return;
 
-    // Identify meshes using their geometry and materials.
     const materialKey = Array.isArray(child.material)
       ? child.material.map((material) => material.uuid).join(",")
       : child.material.uuid;
@@ -72,7 +96,7 @@ function addInstancedTrees(forestGroup, model, placements, name) {
   const treeMatrix = new THREE.Matrix4();
   const instanceMatrix = new THREE.Matrix4();
 
-  // Create one InstancedMesh for each unique geometry/material group.
+  // Create one InstancedMesh for each geometry/material group.
   meshBuckets.forEach((bucket) => {
     const instanceCount = placements.length * bucket.localMatrices.length;
 
@@ -84,27 +108,23 @@ function addInstancedTrees(forestGroup, model, placements, name) {
 
     instancedMesh.name = `${name} Instances`;
 
-    // Forest trees do not cast or receive shadows.
+    // Trees do not cast or receive shadows.
     instancedMesh.castShadow = false;
     instancedMesh.receiveShadow = false;
 
     let index = 0;
 
-    // Position every copy of this tree.
     placements.forEach((tree) => {
-      // Keep the bottom of the tree at ground level.
+      // Position the bottom of the tree at ground level.
       position.set(tree.x, groundOffset * tree.scale, tree.z);
 
-      // Apply the individual tree rotation.
+      // Apply individual rotation and scale.
       quaternion.setFromAxisAngle(up, tree.rotationY);
-
-      // Apply the individual tree scale.
       scaleVector.setScalar(tree.scale);
 
-      // Build the complete tree transformation.
       treeMatrix.compose(position, quaternion, scaleVector);
 
-      // Preserve the individual transformations of every mesh.
+      // Preserve every original mesh transformation.
       bucket.localMatrices.forEach((localMatrix) => {
         instanceMatrix.multiplyMatrices(treeMatrix, localMatrix);
 
@@ -114,101 +134,161 @@ function addInstancedTrees(forestGroup, model, placements, name) {
       });
     });
 
-    // Tell Three.js that our instance transformations have changed.
     instancedMesh.instanceMatrix.needsUpdate = true;
 
-    // Calculate bounds for correct visibility and frustum culling.
+    // Calculate bounds for spatial frustum culling.
     instancedMesh.computeBoundingBox();
     instancedMesh.computeBoundingSphere();
 
     forestGroup.add(instancedMesh);
   });
-
-  console.log(`${name}: created ${placements.length} tree instances`);
 }
 
 // Load and create our surrounding forest.
 export async function loadForestTrees() {
-  // Load both optimized tree models.
-  const [firGLTF, pineGLTF] = await Promise.all([
-    loader.loadAsync(
-      "/assets/models/fir_tree_01_1k.gltf/fir_tree_01_optimized.glb",
-    ),
+  // Load both tree species at both detail levels.
+  const [firHighGLTF, pineHighGLTF, firLowGLTF, pineLowGLTF] =
+    await Promise.all([
+      loader.loadAsync(
+        "/assets/models/fir_tree_01_1k.gltf/fir_tree_01_5pct_test.glb",
+      ),
 
-    loader.loadAsync(
-      "/assets/models/pine_tree_01_1k.gltf/pine_tree_01_optimized.glb",
-    ),
-  ]);
+      loader.loadAsync(
+        "/assets/models/pine_tree_01_1k.gltf/pine_tree_01_5pct_test.glb",
+      ),
 
-  // Create our forest group.
+      loader.loadAsync(
+        "/assets/models/fir_tree_01_1k.gltf/fir_tree_01_2pct_test.glb",
+      ),
+
+      loader.loadAsync(
+        "/assets/models/pine_tree_01_1k.gltf/pine_tree_01_2pct_test.glb",
+      ),
+    ]);
+
+  // Reuse the same materials and textures for each species.
+  shareTreeMaterials(firHighGLTF.scene, firLowGLTF.scene);
+  shareTreeMaterials(pineHighGLTF.scene, pineLowGLTF.scene);
+
+  // Store models by detail level and species.
+  const models = {
+    near: [firHighGLTF.scene, pineHighGLTF.scene],
+
+    far: [firLowGLTF.scene, pineLowGLTF.scene],
+  };
+
   const forestGroup = new THREE.Group();
 
-  // Store the two original models.
-  const treeModels = [firGLTF.scene, pineGLTF.scene];
+  // Store placements in separate spatial batches.
+  const batches = new Map();
 
-  // Store tree positions separately by model.
-  const placements = [[], []];
-
-  // Consistent random placement.
   const random = createRandom();
 
-  // Forest settings.
-  const treesPerSide = 6;
-  const forestMinDistance = 14;
-  const forestMaxDistance = 31;
-  const forestWidth = 34;
-
-  // Define all four sides of the forest.
-  const sides = [
-    { axis: "x", sign: -1 },
-    { axis: "x", sign: 1 },
-    { axis: "z", sign: -1 },
-    { axis: "z", sign: 1 },
+  // Forest density settings.
+  const rows = [
+    {
+      tier: "near",
+      treesPerSide: 8,
+      minDistance: 14,
+      maxDistance: 18,
+      halfWidth: 25,
+    },
+    {
+      tier: "far",
+      treesPerSide: 10,
+      minDistance: 22,
+      maxDistance: 29,
+      halfWidth: 34,
+    },
   ];
 
-  // Populate each side of the playable area.
-  sides.forEach((side) => {
-    for (let i = 0; i < treesPerSide; i++) {
-      // Spread trees along each side with some variation.
-      const spacing = (i / (treesPerSide - 1)) * forestWidth * 2;
+  // Four sides surrounding the playable area.
+  const sides = [
+    { axis: "x", sign: -1, name: "West" },
+    { axis: "x", sign: 1, name: "East" },
+    { axis: "z", sign: -1, name: "North" },
+    { axis: "z", sign: 1, name: "South" },
+  ];
 
-      const along = -forestWidth + spacing + (random() - 0.5) * 2.2;
+  // Generate tree positions.
+  sides.forEach((side, sideIndex) => {
+    rows.forEach((row, rowIndex) => {
+      const spacing = (row.halfWidth * 2) / row.treesPerSide;
 
-      // Keep trees outside the playable area.
-      const distance =
-        forestMinDistance + random() * (forestMaxDistance - forestMinDistance);
+      for (let i = 0; i < row.treesPerSide; i++) {
+        // Spread trees along the current side.
+        const baseAlong = -row.halfWidth + spacing * (i + 0.5);
 
-      let x;
-      let z;
+        // Offset the outer row to fill gaps.
+        const stagger = rowIndex === 1 ? spacing * 0.5 : 0;
 
-      if (side.axis === "x") {
-        x = side.sign * distance;
-        z = along;
-      } else {
-        x = along;
-        z = side.sign * distance;
+        const along = THREE.MathUtils.clamp(
+          baseAlong + stagger + (random() - 0.5) * 1.8,
+          -row.halfWidth,
+          row.halfWidth,
+        );
+
+        // Determine how far outside the playable area to place the tree.
+        const distance =
+          row.minDistance + random() * (row.maxDistance - row.minDistance);
+
+        let x;
+        let z;
+
+        if (side.axis === "x") {
+          x = side.sign * distance;
+          z = along;
+        } else {
+          x = along;
+          z = side.sign * distance;
+        }
+
+        // Randomly choose fir or pine.
+        const species = Math.floor(random() * 2);
+
+        // Split each side into two spatial sections.
+        const segment = along < 0 ? 0 : 1;
+
+        // Create a separate batch for each side, segment,
+        // detail level, and tree species.
+        const batchKey = `${row.tier}|${sideIndex}|${segment}|${species}`;
+
+        if (!batches.has(batchKey)) {
+          batches.set(batchKey, []);
+        }
+
+        batches.get(batchKey).push({
+          x,
+          z,
+
+          scale: 0.9 + random() * 0.25,
+
+          rotationY: random() * Math.PI * 2,
+        });
       }
-
-      // Randomly select fir or pine.
-      const modelIndex = Math.floor(random() * treeModels.length);
-
-      // Give every tree a slightly different appearance.
-      placements[modelIndex].push({
-        x,
-        z,
-        scale: 0.9 + random() * 0.25,
-        rotationY: random() * Math.PI * 2,
-      });
-    }
+    });
   });
 
-  // Create instanced fir trees.
-  addInstancedTrees(forestGroup, treeModels[0], placements[0], "Fir Trees");
+  // Build the individual spatial instancing batches.
+  batches.forEach((placements, key) => {
+    const [tier, sideIndex, segment, species] = key.split("|");
 
-  // Create instanced pine trees.
-  addInstancedTrees(forestGroup, treeModels[1], placements[1], "Pine Trees");
+    const model = models[tier][Number(species)];
+
+    const speciesName = Number(species) === 0 ? "Fir" : "Pine";
+
+    const batchName = `${sideNames[sideIndex]} ${tier} ${speciesName} ${segment}`;
+
+    addInstancedTrees(forestGroup, model, placements, batchName);
+  });
 
   forestGroup.name = "Forest Trees";
 
+  console.log(
+    `Forest created: ${72} trees across ${batches.size} spatial batches.`,
+  );
+
   return forestGroup;
 }
+
+const sideNames = ["West", "East", "North", "South"];
