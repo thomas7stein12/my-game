@@ -41,6 +41,26 @@ function shareTreeMaterials(highDetail, lowDetail) {
   lowMesh.material = highMesh.material;
 }
 
+// Calculate the horizontal footprint of a tree model.
+function getTreeFootprintRadius(model) {
+  model.updateMatrixWorld(true);
+
+  // Convert the model bounds into its local coordinate space.
+  const inverseRoot = model.matrixWorld.clone().invert();
+
+  const bounds = new THREE.Box3()
+    .setFromObject(model)
+    .applyMatrix4(inverseRoot);
+
+  // Find the maximum horizontal distance from the model origin.
+  const maxX = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x));
+
+  const maxZ = Math.max(Math.abs(bounds.min.z), Math.abs(bounds.max.z));
+
+  // Use a conservative radius that accounts for tree rotation.
+  return Math.hypot(maxX, maxZ);
+}
+
 // Create instanced copies of a tree model.
 function addInstancedTrees(forestGroup, model, placements, name) {
   if (placements.length === 0) return;
@@ -177,6 +197,12 @@ export async function loadForestTrees() {
     far: [firLowGLTF.scene, pineLowGLTF.scene],
   };
 
+  // Calculate the footprint of each tree model.
+  const modelFootprints = {
+    near: models.near.map(getTreeFootprintRadius),
+    far: models.far.map(getTreeFootprintRadius),
+  };
+
   const forestGroup = new THREE.Group();
 
   // Store placements in separate spatial batches.
@@ -201,6 +227,10 @@ export async function loadForestTrees() {
       halfWidth: 34,
     },
   ];
+
+  // Boundary and clearance settings.
+  const boundary = 9.8;
+  const boundaryClearance = 1.0;
 
   // Four sides surrounding the playable area.
   const sides = [
@@ -228,9 +258,24 @@ export async function loadForestTrees() {
           row.halfWidth,
         );
 
-        // Determine how far outside the playable area to place the tree.
-        const distance =
+        // Choose the tree species and its individual scale.
+        const species = Math.floor(random() * 2);
+        const scale = 0.9 + random() * 0.25;
+
+        // Choose the preferred position from our existing distance range.
+        const preferredDistance =
           row.minDistance + random() * (row.maxDistance - row.minDistance);
+
+        // Calculate the actual horizontal footprint of this tree.
+        const treeFootprintRadius = modelFootprints[row.tier][species] * scale;
+
+        // Calculate the minimum distance needed to keep the entire tree
+        // outside the boundary, including an extra clearance.
+        const minimumDistance =
+          boundary + boundaryClearance + treeFootprintRadius;
+
+        // Never allow a tree to spawn closer than its safe distance.
+        const distance = Math.max(preferredDistance, minimumDistance);
 
         let x;
         let z;
@@ -243,8 +288,6 @@ export async function loadForestTrees() {
           z = side.sign * distance;
         }
 
-        // Randomly choose fir or pine.
-        const species = Math.floor(random() * 2);
 
         // Split each side into two spatial sections.
         const segment = along < 0 ? 0 : 1;
@@ -261,7 +304,8 @@ export async function loadForestTrees() {
           x,
           z,
 
-          scale: 0.9 + random() * 0.25,
+          // Use the scale already included in our boundary calculation.
+          scale,
 
           rotationY: random() * Math.PI * 2,
         });
