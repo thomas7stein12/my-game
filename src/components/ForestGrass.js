@@ -31,7 +31,7 @@ function getGrassFootprint(geometry) {
 // Load and distribute grass throughout the playable world.
 export async function loadForestGrass() {
   const gltf = await loader.loadAsync(
-    "/assets/models/grass_medium_01_1k.gltf/grass_medium_01_40pct.glb",
+    "/assets/models/grass_medium_01_1k.gltf/grass_medium_01_40pct_kn.glb",
   );
 
   const grassModel = gltf.scene;
