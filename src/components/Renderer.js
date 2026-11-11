@@ -1,14 +1,17 @@
+
 import * as THREE from "three";
 
-// Create the WebGL renderer
+// Create the WebGL renderer.
 const renderer = new THREE.WebGLRenderer({
-  antialias: true,
+  // Disable multisample antialiasing for better performance.
+  antialias: false,
 });
 
-// Set the renderer size to match the browser
-renderer.setSize(window.innerWidth, window.innerHeight);
+// Render at normal resolution instead of Retina resolution.
+// This significantly reduces the GPU workload.
+renderer.setPixelRatio(1);
 
-// Improve rendering quality on high-resolution screens
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Set the renderer size to match the browser.
+renderer.setSize(window.innerWidth, window.innerHeight);
 
 export default renderer;
