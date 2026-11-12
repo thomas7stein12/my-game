@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { PLAYABLE_AREA_BOUNDARY } from "./WorldDimensions.js";
 
 // Create our grass model loader.
 const loader = new GLTFLoader();
@@ -284,7 +285,7 @@ export async function loadForestGrass() {
   const groundHalfSize = 50;
 
   // The inside of the playable area.
-  const boundary = 9.8;
+  const boundary = PLAYABLE_AREA_BOUNDARY;
 
   // Keep grass away from the outer edge of the ground.
   const edgeClearance = 0.65;
@@ -294,7 +295,7 @@ export async function loadForestGrass() {
   const innerSpacing = 0.72;
 
   // Larger clusters create better ground coverage.
-  const minimumClusterScale = 0.90;
+  const minimumClusterScale = 0.9;
   const maximumClusterScale = 1.45;
 
   // Divide the world into independently culled sections.
@@ -393,43 +394,43 @@ export async function loadForestGrass() {
   }
 
   // Outer grass: more open, but randomly scattered.
-for (let x = -outerSafeLimit; x <= outerSafeLimit; x += outerSpacing) {
-  for (let z = -outerSafeLimit; z <= outerSafeLimit; z += outerSpacing) {
-    // Leave some naturally occurring gaps.
-    if (random() < 0.18) continue;
+  for (let x = -outerSafeLimit; x <= outerSafeLimit; x += outerSpacing) {
+    for (let z = -outerSafeLimit; z <= outerSafeLimit; z += outerSpacing) {
+      // Leave some naturally occurring gaps.
+      if (random() < 0.18) continue;
 
-    // Move each cluster away from its regular grid position.
-    const scatteredX = x + (random() - 0.5) * outerSpacing * 1.35;
-    const scatteredZ = z + (random() - 0.5) * outerSpacing * 1.35;
+      // Move each cluster away from its regular grid position.
+      const scatteredX = x + (random() - 0.5) * outerSpacing * 1.35;
+      const scatteredZ = z + (random() - 0.5) * outerSpacing * 1.35;
 
-    // Keep the outer grass outside the barrier area.
-    if (
-      Math.max(Math.abs(scatteredX), Math.abs(scatteredZ)) <
-      boundary - outerSpacing * 0.5
-    ) {
-      continue;
+      // Keep the outer grass outside the barrier area.
+      if (
+        Math.max(Math.abs(scatteredX), Math.abs(scatteredZ)) <
+        boundary - outerSpacing * 0.5
+      ) {
+        continue;
+      }
+
+      addGrassCluster(
+        scatteredX,
+        scatteredZ,
+        outerSpacing,
+        groundHalfSize - edgeClearance,
+      );
     }
-
-    addGrassCluster(
-      scatteredX,
-      scatteredZ,
-      outerSpacing,
-      groundHalfSize - edgeClearance
-    );
   }
-}
 
-// Inner grass: denser, with smaller gaps.
-for (let x = -innerSafeLimit; x <= innerSafeLimit; x += innerSpacing) {
-  for (let z = -innerSafeLimit; z <= innerSafeLimit; z += innerSpacing) {
-    if (random() < 0.08) continue;
+  // Inner grass: denser, with smaller gaps.
+  for (let x = -innerSafeLimit; x <= innerSafeLimit; x += innerSpacing) {
+    for (let z = -innerSafeLimit; z <= innerSafeLimit; z += innerSpacing) {
+      if (random() < 0.08) continue;
 
-    const scatteredX = x + (random() - 0.5) * innerSpacing * 1.2;
-    const scatteredZ = z + (random() - 0.5) * innerSpacing * 1.2;
+      const scatteredX = x + (random() - 0.5) * innerSpacing * 1.2;
+      const scatteredZ = z + (random() - 0.5) * innerSpacing * 1.2;
 
-    addGrassCluster(scatteredX, scatteredZ, innerSpacing, boundary);
+      addGrassCluster(scatteredX, scatteredZ, innerSpacing, boundary);
+    }
   }
-}
 
   // --------------------------------------------------
   // CREATE SPATIALLY CHUNKED INSTANCED GRASS.

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { PLAYABLE_AREA_BOUNDARY } from "./WorldDimensions.js";
 
 // Create our tree model loader.
 const loader = new GLTFLoader();
@@ -229,7 +230,7 @@ export async function loadForestTrees() {
   ];
 
   // Boundary and clearance settings.
-  const boundary = 9.8;
+  const boundary = PLAYABLE_AREA_BOUNDARY;
   const boundaryClearance = 1.0;
 
   // Four sides surrounding the playable area.
@@ -287,7 +288,6 @@ export async function loadForestTrees() {
           x = along;
           z = side.sign * distance;
         }
-
 
         // Split each side into two spatial sections.
         const segment = along < 0 ? 0 : 1;

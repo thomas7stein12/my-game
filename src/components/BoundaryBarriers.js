@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { PLAYABLE_AREA_BOUNDARY } from "./WorldDimensions.js";
 
 // Create our 3D model loader.
 const loader = new GLTFLoader();
@@ -18,9 +19,11 @@ export async function loadBoundaryBarriers() {
 
   // Barrier settings.
   const barrierScale = 1.05;
-  const boundary = 9.8;
-  const barrierCount = 13;
+  const boundary = PLAYABLE_AREA_BOUNDARY;
   const barrierSpacing = 1.5;
+
+  // Automatically calculate how many barriers we need.
+  const barrierCount = Math.ceil((boundary * 2) / barrierSpacing);
 
   // Calculate the height needed to place the barriers on the ground.
   const sampleBarrier = barrierModel.clone(true);

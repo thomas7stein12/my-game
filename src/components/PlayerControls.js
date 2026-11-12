@@ -1,5 +1,6 @@
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import * as THREE from "three";
+import { PLAYABLE_AREA_LIMIT, PLAYABLE_AREA_SIZE } from "./WorldDimensions.js";
 
 export function PlayerControls(
   camera,
@@ -281,7 +282,7 @@ export function PlayerControls(
 
   // Movement settings
   const movementSpeed = 6;
-  const platformLimit = 9.4;
+  const platformLimit = PLAYABLE_AREA_LIMIT;
 
   // Approximate radius of the player's collision body.
   const playerRadius = 0.1;
@@ -297,8 +298,8 @@ export function PlayerControls(
     {
       x: 0,
       z: 0,
-      width: 20,
-      depth: 20,
+      width: PLAYABLE_AREA_SIZE,
+      depth: PLAYABLE_AREA_SIZE,
       topY: 0,
     },
 
