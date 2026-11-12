@@ -181,6 +181,10 @@ const material = new THREE.MeshStandardMaterial({
 
 const cube = new THREE.Mesh(geometry, material);
 
+// Performance monitoring.
+let statsLastTime = 0;
+let statsFrameCount = 0;
+
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
@@ -205,6 +209,31 @@ function animate() {
 
   // Render the scene
   renderer.render(scene, camera);
+
+  // Count frames for average FPS.
+  statsFrameCount++;
+
+  const statsElapsed = clock.elapsedTime;
+
+  // Print performance information every 2 seconds.
+  if (statsElapsed - statsLastTime >= 2) {
+    const elapsed = statsElapsed - statsLastTime;
+
+    console.log("Game Performance:", {
+      fps: Math.round(statsFrameCount / elapsed),
+
+      drawCalls: renderer.info.render.calls,
+
+      triangles: renderer.info.render.triangles,
+
+      geometries: renderer.info.memory.geometries,
+
+      textures: renderer.info.memory.textures,
+    });
+
+    statsFrameCount = 0;
+    statsLastTime = statsElapsed;
+  }
 }
 
 animate();
