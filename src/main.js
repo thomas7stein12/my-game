@@ -11,6 +11,7 @@ import { loadBoundaryBarriers } from "./components/BoundaryBarriers.js";
 import { loadForestTrees } from "./components/ForestTrees.js";
 import { createForestSkyFog } from "./components/ForestSky.js";
 import { loadForestGrass } from "./components/ForestGrass.js";
+import { WorldChunkManager } from "./components/WorldChunkManager.js";
 import jumpPlatforms, {
   platformSurfaces,
   platformDefinitions,
@@ -45,6 +46,10 @@ const clock = new THREE.Clock();
 
 // Store the fog layer that hides the sky near the horizon.
 let skyFogOverlay = null;
+
+// Manages which grass world chunks are loaded.
+let grassChunkManager = null;
+let treeChunkManager = null;
 
 // Add lighting to the scene
 scene.add(directionalLight);
@@ -84,19 +89,65 @@ loadBoundaryBarriers()
     console.error("Failed to load boundary barriers:", error);
   });
 
-// Load our surrounding forest trees.
 loadForestTrees()
   .then((trees) => {
-    scene.add(trees);
+    scene.add(trees.group);
+
+    treeChunkManager = new WorldChunkManager({
+      name: "Tree",
+      camera,
+
+      chunks: trees.chunks,
+
+      loadChunk: trees.loadChunk,
+
+      unloadChunk: trees.unloadChunk,
+
+      loadDistance: 12,
+      unloadDistance: 18,
+      maxViewDistance: 52,
+
+      updateInterval: 0.2,
+      maxLoadsPerUpdate: 2,
+    });
+
+    treeChunkManager.update(0);
+
+    console.log(`Tree world chunks ready: ${trees.chunks.size}`);
   })
   .catch((error) => {
     console.error("Failed to load forest trees:", error);
   });
 
-// Load grass throughout the playable area.
+// Load and manage individual grass world chunks.
 loadForestGrass()
   .then((grass) => {
-    scene.add(grass);
+    // Add the main grass container to the scene.
+    scene.add(grass.group);
+
+    // Initialize the world chunk manager.
+    grassChunkManager = new WorldChunkManager({
+      name: "Grass",
+      camera,
+
+      chunks: grass.chunks,
+
+      loadChunk: grass.loadChunk,
+
+      unloadChunk: grass.unloadChunk,
+
+      loadDistance: 12,
+      unloadDistance: 18,
+      maxViewDistance: 52,
+
+      updateInterval: 0.2,
+      maxLoadsPerUpdate: 4,
+    });
+
+    // Load the initial nearby and visible chunks.
+    grassChunkManager.update(0);
+
+    console.log(`Grass world chunks ready: ${grass.chunks.size}`);
   })
   .catch((error) => {
     console.error("Failed to load forest grass:", error);
@@ -194,6 +245,15 @@ function animate() {
 
   // Update player movement
   playerControls.update(delta);
+
+  // Update nearby and visible grass world chunks.
+  if (grassChunkManager) {
+    grassChunkManager.update(delta);
+  }
+
+  if (treeChunkManager) {
+    treeChunkManager.update(delta);
+  }
 
   // Animate the icon and check player distance
   // Update the original marker

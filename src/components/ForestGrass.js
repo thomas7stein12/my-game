@@ -433,59 +433,58 @@ export async function loadForestGrass() {
   }
 
   // --------------------------------------------------
-  // CREATE SPATIALLY CHUNKED INSTANCED GRASS.
+  // PREPARE INDEPENDENT WORLD GRASS CHUNKS.
   // --------------------------------------------------
-
-  const up = new THREE.Vector3(0, 1, 0);
-  const position = new THREE.Vector3();
-  const quaternion = new THREE.Quaternion();
-  const scaleVector = new THREE.Vector3();
-  const matrix = new THREE.Matrix4();
 
   let totalClusters = 0;
   let totalTriangles = 0;
 
-  // Create separate InstancedMeshes for each cluster design
-  // inside each spatial chunk.
+  // Store chunk data separately from the actual meshes.
+  const worldChunks = new Map();
+
+  // Organize the existing grass placements into world chunks.
   chunkBatches.forEach((placements, key) => {
     const [chunkX, chunkZ, clusterIndex] = key.split("|").map(Number);
 
+    const chunkKey = `${chunkX}|${chunkZ}`;
+
+    let chunk = worldChunks.get(chunkKey);
+
+    // Create the chunk description once.
+    if (!chunk) {
+      const chunkMinX = chunkX * chunkSize - groundHalfSize;
+      const chunkMinZ = chunkZ * chunkSize - groundHalfSize;
+
+      const margin = largestFootprint * maximumClusterScale;
+
+      chunk = {
+        chunkX,
+        chunkZ,
+
+        // Store grass placements by cluster variation.
+        batches: new Map(),
+
+        // Actual meshes are created only when loaded.
+        group: null,
+
+        // Define the actual world-space area covered by this grass chunk.
+        bounds: new THREE.Box3(
+          new THREE.Vector3(chunkMinX - margin, -1, chunkMinZ - margin),
+          new THREE.Vector3(
+            chunkMinX + chunkSize + margin,
+            30,
+            chunkMinZ + chunkSize + margin,
+          ),
+        ),
+      };
+
+      worldChunks.set(chunkKey, chunk);
+    }
+
+    chunk.batches.set(clusterIndex, placements);
+
+    // Count the total potential grass workload.
     const cluster = clusterVariants[clusterIndex];
-
-    const instancedMesh = new THREE.InstancedMesh(
-      cluster.geometry,
-      grassMaterial,
-      placements.length,
-    );
-
-    instancedMesh.name = `Grass Chunk ${chunkX}-${chunkZ} Variant ${clusterIndex}`;
-
-    // Grass does not need shadows.
-    instancedMesh.castShadow = false;
-    instancedMesh.receiveShadow = false;
-
-    // These instances never move.
-    instancedMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-
-    placements.forEach((grass, index) => {
-      position.set(grass.x, 0, grass.z);
-
-      quaternion.setFromAxisAngle(up, grass.rotationY);
-
-      scaleVector.setScalar(grass.scale);
-
-      matrix.compose(position, quaternion, scaleVector);
-
-      instancedMesh.setMatrixAt(index, matrix);
-    });
-
-    instancedMesh.instanceMatrix.needsUpdate = true;
-
-    // Calculate bounds separately for each section.
-    instancedMesh.computeBoundingBox();
-    instancedMesh.computeBoundingSphere();
-
-    grassGroup.add(instancedMesh);
 
     const index = cluster.geometry.getIndex();
 
@@ -494,16 +493,109 @@ export async function loadForestGrass() {
       : cluster.geometry.getAttribute("position").count / 3;
 
     totalTriangles += trianglesPerCluster * placements.length;
-
     totalClusters += placements.length;
   });
 
+  // --------------------------------------------------
+  // LOAD ONE GRASS CHUNK.
+  // --------------------------------------------------
+
+  function loadChunk(chunkKey) {
+    const chunk = worldChunks.get(chunkKey);
+
+    if (!chunk || chunk.group) return;
+
+    const chunkGroup = new THREE.Group();
+
+    chunkGroup.name = `Grass World Chunk ${chunk.chunkX}-${chunk.chunkZ}`;
+
+    // Reusable transformation objects.
+    const up = new THREE.Vector3(0, 1, 0);
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scaleVector = new THREE.Vector3();
+    const matrix = new THREE.Matrix4();
+
+    // Build the individual grass variations for this chunk.
+    chunk.batches.forEach((placements, clusterIndex) => {
+      const cluster = clusterVariants[clusterIndex];
+
+      const instancedMesh = new THREE.InstancedMesh(
+        cluster.geometry,
+        grassMaterial,
+        placements.length,
+      );
+
+      instancedMesh.name = `Grass Chunk ${chunk.chunkX}-${chunk.chunkZ} Variant ${clusterIndex}`;
+
+      instancedMesh.castShadow = false;
+      instancedMesh.receiveShadow = false;
+
+      instancedMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+      placements.forEach((grass, index) => {
+        position.set(grass.x, 0, grass.z);
+
+        quaternion.setFromAxisAngle(up, grass.rotationY);
+
+        scaleVector.setScalar(grass.scale);
+
+        matrix.compose(position, quaternion, scaleVector);
+
+        instancedMesh.setMatrixAt(index, matrix);
+      });
+
+      instancedMesh.instanceMatrix.needsUpdate = true;
+
+      // Calculate bounds for frustum culling.
+      instancedMesh.computeBoundingBox();
+      instancedMesh.computeBoundingSphere();
+
+      chunkGroup.add(instancedMesh);
+    });
+
+    // Store the completed chunk.
+    chunk.group = chunkGroup;
+
+    // Add it to the main grass environment.
+    grassGroup.add(chunkGroup);
+  }
+
+  // --------------------------------------------------
+  // UNLOAD ONE GRASS CHUNK.
+  // --------------------------------------------------
+
+  function unloadChunk(chunkKey) {
+    const chunk = worldChunks.get(chunkKey);
+
+    if (!chunk || !chunk.group) return;
+
+    // Remove the chunk from the active scene.
+    grassGroup.remove(chunk.group);
+
+    // Release its individual GPU instance resources.
+    chunk.group.traverse((object) => {
+      if (object.isInstancedMesh) {
+        object.dispose();
+      }
+    });
+
+    // Release the chunk's mesh references.
+    chunk.group = null;
+  }
+
   console.log(
-    `Forest grass created: ${totalClusters} clusters, ` +
+    `Forest grass prepared: ${totalClusters} clusters, ` +
       `${totalClusters * 4} individual plants, ` +
-      `${totalTriangles.toLocaleString()} total triangles, ` +
-      `${chunkBatches.size} spatial batches.`,
+      `${totalTriangles.toLocaleString()} potential triangles, ` +
+      `${worldChunks.size} world chunks.`,
   );
 
-  return grassGroup;
+  // Return everything needed by the world chunk manager.
+  return {
+    group: grassGroup,
+    chunks: worldChunks,
+    loadChunk,
+    unloadChunk,
+  };
 }

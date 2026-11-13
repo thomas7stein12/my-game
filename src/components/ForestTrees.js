@@ -198,6 +198,83 @@ export async function loadForestTrees() {
     far: [firLowGLTF.scene, pineLowGLTF.scene],
   };
 
+  // TEST: Enable back-face culling on distant pine foliage.
+  models.far[1].traverse((object) => {
+    if (!object.isMesh) return;
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+
+    materials.forEach((material) => {
+      if (material?.name === "pine_tree_01_twig") {
+        material.side = THREE.FrontSide;
+        material.needsUpdate = true;
+      }
+    });
+  });
+
+  // TEST: Enable back-face culling on distant fir foliage.
+  models.far[0].traverse((object) => {
+    if (!object.isMesh) return;
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+
+    materials.forEach((material) => {
+      if (material?.name === "fir_tree_01_twig") {
+        material.side = THREE.FrontSide;
+        material.needsUpdate = true;
+      }
+    });
+  });
+
+  // TEST: Enable back-face culling on nearby pine foliage.
+  models.near[1].traverse((object) => {
+    if (!object.isMesh) return;
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+
+    materials.forEach((material) => {
+      if (material?.name === "pine_tree_01_twig") {
+        material.side = THREE.FrontSide;
+        material.needsUpdate = true;
+      }
+    });
+  });
+
+  function logTreeMeshBreakdown(label, model) {
+    const meshStats = [];
+
+    model.traverse((object) => {
+      if (!object.isMesh || !object.geometry) return;
+
+      const geometry = object.geometry;
+
+      const triangles = geometry.index
+        ? geometry.index.count / 3
+        : geometry.attributes.position.count / 3;
+
+      meshStats.push({
+        mesh: object.name || "Unnamed mesh",
+        triangles: Math.round(triangles),
+        vertices: geometry.attributes.position.count,
+        material: Array.isArray(object.material)
+          ? object.material.map((m) => m.name).join(", ")
+          : object.material?.name || "Unnamed material",
+      });
+    });
+
+    meshStats.sort((a, b) => b.triangles - a.triangles);
+
+    console.group(`${label} Mesh Breakdown`);
+    console.table(meshStats);
+    console.groupEnd();
+  }
+
   // Calculate the footprint of each tree model.
   const modelFootprints = {
     near: models.near.map(getTreeFootprintRadius),
@@ -313,26 +390,191 @@ export async function loadForestTrees() {
     });
   });
 
-  // Build the individual spatial instancing batches.
+  logTreeMeshBreakdown("Near Fir", models.near[0]);
+  logTreeMeshBreakdown("Near Pine", models.near[1]);
+  logTreeMeshBreakdown("Far Fir", models.far[0]);
+  logTreeMeshBreakdown("Far Pine", models.far[1]);
+
+  function logTwigMaterialDetails(label, model) {
+    model.traverse((object) => {
+      if (!object.isMesh || !object.geometry) return;
+
+      const materials = Array.isArray(object.material)
+        ? object.material
+        : [object.material];
+
+      materials.forEach((material) => {
+        if (!material?.name?.toLowerCase().includes("twig")) return;
+
+        console.log(`${label} Twig Material:`, {
+          mesh: object.name,
+          material: material.name,
+          type: material.type,
+          transparent: material.transparent,
+          opacity: material.opacity,
+          alphaTest: material.alphaTest,
+          alphaMap: Boolean(material.alphaMap),
+          textureMap: Boolean(material.map),
+          vertexColors: material.vertexColors,
+          side: material.side,
+          depthWrite: material.depthWrite,
+        });
+      });
+    });
+  }
+
+  logTwigMaterialDetails("Near Fir", models.near[0]);
+  logTwigMaterialDetails("Near Pine", models.near[1]);
+  logTwigMaterialDetails("Far Fir", models.far[0]);
+  logTwigMaterialDetails("Far Pine", models.far[1]);
+
+  // --------------------------------------------------
+  // PREPARE INDEPENDENT TREE WORLD CHUNKS.
+  // --------------------------------------------------
+
+  const treeChunkSize = 25;
+  const groundHalfSize = 50;
+
+  // Store tree placements by their actual world coordinates.
+  const worldChunks = new Map();
+
   batches.forEach((placements, key) => {
-    const [tier, sideIndex, segment, species] = key.split("|");
+    const [tier, , , species] = key.split("|");
 
-    const model = models[tier][Number(species)];
+    placements.forEach((tree) => {
+      // Find the world chunk containing this tree.
+      const chunkX = Math.floor((tree.x + groundHalfSize) / treeChunkSize);
 
-    const speciesName = Number(species) === 0 ? "Fir" : "Pine";
+      const chunkZ = Math.floor((tree.z + groundHalfSize) / treeChunkSize);
 
-    const batchName = `${sideNames[sideIndex]} ${tier} ${speciesName} ${segment}`;
+      const chunkKey = `${chunkX}|${chunkZ}`;
 
-    addInstancedTrees(forestGroup, model, placements, batchName);
+      let chunk = worldChunks.get(chunkKey);
+
+      // Create the chunk description if needed.
+      if (!chunk) {
+        const minX = chunkX * treeChunkSize - groundHalfSize;
+        const minZ = chunkZ * treeChunkSize - groundHalfSize;
+
+        chunk = {
+          chunkX,
+          chunkZ,
+
+          batches: new Map(),
+
+          group: null,
+
+          bounds: new THREE.Box3(),
+        };
+
+        worldChunks.set(chunkKey, chunk);
+      }
+
+      // Calculate this individual tree's actual footprint.
+      const treeFootprintRadius =
+        modelFootprints[tier][Number(species)] * tree.scale;
+
+      // Expand the chunk bounds around the actual tree position.
+      chunk.bounds.expandByPoint(
+        new THREE.Vector3(
+          tree.x - treeFootprintRadius,
+          -1,
+          tree.z - treeFootprintRadius,
+        ),
+      );
+
+      chunk.bounds.expandByPoint(
+        new THREE.Vector3(
+          tree.x + treeFootprintRadius,
+          30,
+          tree.z + treeFootprintRadius,
+        ),
+      );
+
+      // Keep different species and detail levels separate.
+      const batchKey = `${tier}|${species}`;
+
+      if (!chunk.batches.has(batchKey)) {
+        chunk.batches.set(batchKey, []);
+      }
+
+      chunk.batches.get(batchKey).push(tree);
+    });
   });
+
+  // --------------------------------------------------
+  // LOAD ONE TREE CHUNK.
+  // --------------------------------------------------
+
+  function loadChunk(chunkKey) {
+    const chunk = worldChunks.get(chunkKey);
+
+    if (!chunk || chunk.group) return;
+
+    const chunkGroup = new THREE.Group();
+
+    chunkGroup.name = `Tree World Chunk ${chunk.chunkX}-${chunk.chunkZ}`;
+
+    chunk.batches.forEach((placements, batchKey) => {
+      const [tier, species] = batchKey.split("|");
+
+      const model = models[tier][Number(species)];
+
+      const speciesName = Number(species) === 0 ? "Fir" : "Pine";
+
+      addInstancedTrees(
+        chunkGroup,
+        model,
+        placements,
+        `${chunk.chunkX}-${chunk.chunkZ} ${tier} ${speciesName}`,
+      );
+    });
+
+    chunk.group = chunkGroup;
+
+    forestGroup.add(chunkGroup);
+  }
+
+  // --------------------------------------------------
+  // UNLOAD ONE TREE CHUNK.
+  // --------------------------------------------------
+
+  function unloadChunk(chunkKey) {
+    const chunk = worldChunks.get(chunkKey);
+
+    if (!chunk || !chunk.group) return;
+
+    forestGroup.remove(chunk.group);
+
+    // Dispose of instance-specific GPU resources.
+    // Shared tree geometry and materials stay available.
+    chunk.group.traverse((object) => {
+      if (object.isInstancedMesh) {
+        object.dispose();
+      }
+    });
+
+    chunk.group = null;
+  }
+
+  const totalTrees = [...batches.values()].reduce(
+    (total, placements) => total + placements.length,
+    0,
+  );
 
   forestGroup.name = "Forest Trees";
 
   console.log(
-    `Forest created: ${72} trees across ${batches.size} spatial batches.`,
+    `Forest trees prepared: ${totalTrees} trees across ` +
+      `${worldChunks.size} world chunks.`,
   );
 
-  return forestGroup;
+  return {
+    group: forestGroup,
+    chunks: worldChunks,
+    loadChunk,
+    unloadChunk,
+  };
 }
 
 const sideNames = ["West", "East", "North", "South"];
