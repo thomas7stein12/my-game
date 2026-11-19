@@ -89,6 +89,8 @@ loadBoundaryBarriers()
     console.error("Failed to load boundary barriers:", error);
   });
 
+  // Temp to add new computer
+
 loadForestTrees()
   .then((trees) => {
     scene.add(trees.group);
