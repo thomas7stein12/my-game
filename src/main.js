@@ -95,6 +95,9 @@ loadForestTrees()
   .then((trees) => {
     scene.add(trees.group);
 
+    window.__perfGroups ??= {};
+    window.__perfGroups.trees = trees.group;
+
     treeChunkManager = new WorldChunkManager({
       name: "Tree",
       camera,
@@ -126,6 +129,9 @@ loadForestGrass()
   .then((grass) => {
     // Add the main grass container to the scene.
     scene.add(grass.group);
+
+    window.__perfGroups ??= {};
+    window.__perfGroups.grass = grass.group;
 
     // Initialize the world chunk manager.
     grassChunkManager = new WorldChunkManager({
