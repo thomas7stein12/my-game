@@ -9,23 +9,6 @@ import {
 
 const textureLoader = new THREE.TextureLoader();
 
-// Create an arched cave shape.
-function createArchShape(width, height, springHeight) {
-  const shape = new THREE.Shape();
-
-  shape.moveTo(-width / 2, 0);
-  shape.lineTo(-width / 2, springHeight);
-
-  shape.quadraticCurveTo(-width / 2, height, 0, height);
-
-  shape.quadraticCurveTo(width / 2, height, width / 2, springHeight);
-
-  shape.lineTo(width / 2, 0);
-  shape.closePath();
-
-  return shape;
-}
-
 // Load the cliff textures.
 async function loadCliffMaterial() {
   const folder = "/assets/textures/cliff/textures/";
@@ -133,10 +116,14 @@ function createCliffWall(material) {
 }
 
 // Create the dark interior visible through the cave entrance.
-function createCaveInterior(wallZ) {
-  const shape = createArchShape(4.25, 4.55, 2.95);
 
-  const geometry = new THREE.ShapeGeometry(shape, 24);
+// Create a dark backdrop behind the entire cliff.
+// The cliff hides it everywhere except through the cave opening.
+function createCaveInterior(wallZ) {
+  const geometry = new THREE.PlaneGeometry(
+    CLIFF_WALL_WIDTH + 40,
+    CLIFF_WALL_HEIGHT + 8,
+  );
 
   const material = new THREE.MeshBasicMaterial({
     color: 0x07090b,
@@ -145,10 +132,10 @@ function createCaveInterior(wallZ) {
 
   const interior = new THREE.Mesh(geometry, material);
 
-  interior.name = "Dark Cave Interior";
+  interior.name = "Dark Cave Backdrop";
 
-  // Set it behind the main cliff wall.
-  interior.position.set(0, 0, wallZ - 1.3);
+  // Keep the backdrop behind all the cave boulders.
+  interior.position.set(0, CLIFF_WALL_HEIGHT / 2, wallZ - 8);
 
   return interior;
 }
