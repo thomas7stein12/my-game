@@ -4,14 +4,29 @@ import {
   CLIFF_BASE_Z,
   CLIFF_WALL_WIDTH,
   CLIFF_WALL_HEIGHT,
+  CLIFF_WALL_OFFSET,
 } from "./WorldDimensions.js";
 
 const textureLoader = new THREE.TextureLoader();
 
-// How far behind the playable boundary the cliff sits.
-const CLIFF_WALL_OFFSET = 2.3;
+// Create an arched cave shape.
+function createArchShape(width, height, springHeight) {
+  const shape = new THREE.Shape();
 
-// Load the marble cliff textures.
+  shape.moveTo(-width / 2, 0);
+  shape.lineTo(-width / 2, springHeight);
+
+  shape.quadraticCurveTo(-width / 2, height, 0, height);
+
+  shape.quadraticCurveTo(width / 2, height, width / 2, springHeight);
+
+  shape.lineTo(width / 2, 0);
+  shape.closePath();
+
+  return shape;
+}
+
+// Load the cliff textures.
 async function loadCliffMaterial() {
   const folder = "/assets/textures/cliff/textures/";
 
@@ -23,54 +38,93 @@ async function loadCliffMaterial() {
     textureLoader.loadAsync(`${folder}marble_cliff_03_arm_1k.jpg`),
   ]);
 
-  // Set the correct color spaces.
   diffuseMap.colorSpace = THREE.SRGBColorSpace;
 
   normalMap.colorSpace = THREE.NoColorSpace;
   roughnessMap.colorSpace = THREE.NoColorSpace;
 
-  // Repeat the textures instead of stretching them.
-  const tileSize = 7;
-
+  // Repeat textures using world-space UV coordinates.
   [diffuseMap, normalMap, roughnessMap].forEach((texture) => {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-
-    texture.repeat.set(
-      CLIFF_WALL_WIDTH / tileSize,
-      CLIFF_WALL_HEIGHT / tileSize,
-    );
-
-    texture.needsUpdate = true;
   });
 
   return new THREE.MeshStandardMaterial({
     map: diffuseMap,
-
     normalMap,
-
     roughnessMap,
 
     roughness: 1,
     metalness: 0,
 
-    // Let the normal map provide additional surface detail.
-    normalScale: new THREE.Vector2(1.0, 1.0),
+    normalScale: new THREE.Vector2(1, 1),
 
     side: THREE.FrontSide,
   });
 }
 
-// Create the continuous textured cliff.
+// Create a textured cliff wall with an actual opening.
 function createCliffWall(material) {
-  const geometry = new THREE.PlaneGeometry(CLIFF_WALL_WIDTH, CLIFF_WALL_HEIGHT);
+  const shape = new THREE.Shape();
+
+  // Main rectangular cliff outline.
+  shape.moveTo(-CLIFF_WALL_WIDTH / 2, 0);
+  shape.lineTo(CLIFF_WALL_WIDTH / 2, 0);
+  shape.lineTo(CLIFF_WALL_WIDTH / 2, CLIFF_WALL_HEIGHT);
+  shape.lineTo(-CLIFF_WALL_WIDTH / 2, CLIFF_WALL_HEIGHT);
+  shape.closePath();
+
+  // Create the opening near the center.
+  const openingWidth = 4.5;
+  const openingHeight = 4.8;
+  const springHeight = 3.1;
+
+  const caveHole = new THREE.Path();
+
+  caveHole.moveTo(-openingWidth / 2, 0);
+  caveHole.lineTo(-openingWidth / 2, springHeight);
+
+  caveHole.quadraticCurveTo(-openingWidth / 2, openingHeight, 0, openingHeight);
+
+  caveHole.quadraticCurveTo(
+    openingWidth / 2,
+    openingHeight,
+    openingWidth / 2,
+    springHeight,
+  );
+
+  caveHole.lineTo(openingWidth / 2, 0);
+  caveHole.closePath();
+
+  shape.holes.push(caveHole);
+
+  // Generate geometry around the opening.
+  const geometry = new THREE.ShapeGeometry(shape, 32);
+
+  // Tile the textures every 7 world units.
+  // ShapeGeometry uses position-based UVs, so create
+  // the texture coordinates directly in world units.
+  const positions = geometry.attributes.position;
+  const uvs = geometry.attributes.uv;
+
+  const tileSize = 7;
+
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i);
+    const y = positions.getY(i);
+
+    uvs.setXY(i, (x + CLIFF_WALL_WIDTH / 2) / tileSize, y / tileSize);
+  }
+
+  uvs.needsUpdate = true;
 
   const wall = new THREE.Mesh(geometry, material);
 
-  wall.name = "Textured Marble Cliff Wall";
+  wall.name = "Textured Cliff With Cave Opening";
 
-  // Position the wall behind the playable boundary.
-  wall.position.set(0, CLIFF_WALL_HEIGHT / 2, CLIFF_BASE_Z - CLIFF_WALL_OFFSET);
+  const wallZ = CLIFF_BASE_Z - CLIFF_WALL_OFFSET;
+
+  wall.position.set(0, 0, wallZ);
 
   wall.castShadow = false;
   wall.receiveShadow = true;
@@ -78,25 +132,46 @@ function createCliffWall(material) {
   return wall;
 }
 
-// Load the complete cliff environment.
+// Create the dark interior visible through the cave entrance.
+function createCaveInterior(wallZ) {
+  const shape = createArchShape(4.25, 4.55, 2.95);
+
+  const geometry = new THREE.ShapeGeometry(shape, 24);
+
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x07090b,
+    side: THREE.DoubleSide,
+  });
+
+  const interior = new THREE.Mesh(geometry, material);
+
+  interior.name = "Dark Cave Interior";
+
+  // Set it behind the main cliff wall.
+  interior.position.set(0, 0, wallZ - 1.3);
+
+  return interior;
+}
+
+// Load the entire cliff environment.
 export async function loadCliff() {
   const cliffGroup = new THREE.Group();
 
   cliffGroup.name = "Main Cliff Environment";
 
-  // Load the three textures.
-  const cliffMaterial = await loadCliffMaterial();
+  const material = await loadCliffMaterial();
 
-  // Create the lightweight wall.
-  const wall = createCliffWall(cliffMaterial);
+  const wall = createCliffWall(material);
 
+  const wallZ = CLIFF_BASE_Z - CLIFF_WALL_OFFSET;
+
+  // Add the dark interior first.
+  cliffGroup.add(createCaveInterior(wallZ));
+
+  // Add the cliff around the opening.
   cliffGroup.add(wall);
 
-  console.log("Textured cliff loaded:", {
-    width: CLIFF_WALL_WIDTH,
-    height: CLIFF_WALL_HEIGHT,
-    triangles: 2,
-  });
+  console.log("Cliff and cave opening loaded.");
 
   return cliffGroup;
 }
