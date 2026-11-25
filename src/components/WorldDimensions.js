@@ -14,7 +14,10 @@ export const FOREST_APEX_Z = PLAYABLE_AREA_DEPTH / 2;
 // The cliff extends beyond the playable triangle so
 // its endpoints disappear into the fog.
 export const CLIFF_WALL_WIDTH = 200;
-export const CLIFF_WALL_HEIGHT = 12.5;
+export const CLIFF_WALL_HEIGHT = 42.5;
+
+// Keep the cliff safely behind the playable boundary.
+export const CLIFF_WALL_OFFSET = 2.3;
 
 // Keep the original forest ground dimensions.
 export const GROUND_HALF_SIZE = 50;
