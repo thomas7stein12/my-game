@@ -314,6 +314,22 @@ export async function loadForestGrass() {
   // There is deliberately no grass behind the cliff.
   const forestBandWidth = 28;
 
+  // Gradually blend dense clearing grass into sparse forest grass.
+  const transitionWidth = 5.0;
+
+  // Keep transition placements slightly closer together
+  // than the regular outer forest grass.
+  const transitionSpacing = 1.0;
+
+  // Each row becomes progressively less dense.
+  // Offsets are measured outward from the triangle edge.
+  const transitionLayers = [
+    { offset: 0.55, chance: 0.88 },
+    { offset: 1.7, chance: 0.68 },
+    { offset: 3.1, chance: 0.43 },
+    { offset: 4.6, chance: 0.22 },
+  ];
+
   // Organize grass by spatial chunk and cluster design.
   const chunkBatches = new Map();
 
@@ -328,28 +344,8 @@ export async function loadForestGrass() {
     );
   }
 
-  // Dense grass inside the triangular clearing.
-  function canPlaceInnerGrass(x, z, margin) {
-    return isInsideGround(x, z, margin) && isInsidePlayableArea(x, z, margin);
-  }
-
-  // More open grass outside the two forest boundaries.
-  function canPlaceOuterGrass(x, z, margin) {
-    if (!isInsideGround(x, z, margin)) {
-      return false;
-    }
-
-    // Never place outer grass inside the clearing.
-    if (isInsidePlayableArea(x, z)) {
-      return false;
-    }
-
-    // Leave the area behind the cliff empty.
-    if (z < CLIFF_BASE_Z + margin) {
-      return false;
-    }
-
-    // Find the closest of the two forest boundaries.
+  // Calculate the distance to the closest forest boundary.
+  function getNearestForestEdge(x, z) {
     let nearestEdge = Infinity;
 
     FOREST_EDGE_SEGMENTS.forEach(([start, end]) => {
@@ -358,12 +354,67 @@ export async function loadForestGrass() {
       nearestEdge = Math.min(nearestEdge, distance);
     });
 
-    // Keep the grass within the surrounding forest bands.
-    return nearestEdge <= forestBandWidth - margin;
+    return nearestEdge;
+  }
+
+  // Keep dense grass throughout the entire clearing.
+  // Only the grass cluster center needs to be inside.
+  // Its outer blades can naturally overlap the boundary.
+  function canPlaceInnerGrass(x, z, margin) {
+    return isInsideGround(x, z, margin) && isInsidePlayableArea(x, z);
+  }
+
+  // Fill the area immediately outside the clearing.
+  // Grass density will gradually decrease with distance.
+  function canPlaceTransitionGrass(x, z, margin) {
+    if (!isInsideGround(x, z, margin)) {
+      return false;
+    }
+
+    // Only transition grass outside the playable area.
+    if (isInsidePlayableArea(x, z)) {
+      return false;
+    }
+
+    return getNearestForestEdge(x, z) <= transitionWidth;
+  }
+
+  // Regular sparse grass farther into the surrounding forest.
+  function canPlaceOuterGrass(x, z, margin) {
+    if (!isInsideGround(x, z, margin)) {
+      return false;
+    }
+
+    if (isInsidePlayableArea(x, z)) {
+      return false;
+    }
+
+    // Keep the area behind the cliff empty.
+    if (z < CLIFF_BASE_Z + margin) {
+      return false;
+    }
+
+    const nearestEdge = getNearestForestEdge(x, z);
+
+    // The transition system handles this area separately.
+    return (
+      nearestEdge >= transitionWidth && nearestEdge <= forestBandWidth - margin
+    );
   }
 
   // Add an individual grass cluster.
-  function addGrassCluster(baseX, baseZ, spacing, canPlace) {
+  function addGrassCluster(
+    baseX,
+    baseZ,
+    spacing,
+    canPlace,
+    placementChance = 1,
+  ) {
+    // Randomly skip placements according to local density.
+    if (random() > placementChance) {
+      return;
+    }
+
     const clusterIndex = Math.floor(random() * clusterVariants.length);
 
     const cluster = clusterVariants[clusterIndex];
@@ -430,6 +481,49 @@ export async function loadForestGrass() {
       addGrassCluster(scatteredX, scatteredZ, innerSpacing, canPlaceInnerGrass);
     }
   }
+
+  // --------------------------------------------------
+  // TRANSITION GRASS: CLEARING INTO FOREST
+  // --------------------------------------------------
+
+  // Generate several randomized rows of grass just
+  // outside both angled forest boundaries.
+  FOREST_EDGE_SEGMENTS.forEach(([start, end]) => {
+    const edgeX = end.x - start.x;
+    const edgeZ = end.z - start.z;
+
+    const edgeLength = Math.hypot(edgeX, edgeZ);
+
+    // Normalize the direction along the boundary.
+    const directionX = edgeX / edgeLength;
+    const directionZ = edgeZ / edgeLength;
+
+    // The outward-facing normal of the boundary.
+    const outwardX = -directionZ;
+    const outwardZ = directionX;
+
+    const steps = Math.floor(edgeLength / transitionSpacing);
+
+    // Walk along the entire edge.
+    for (let i = 2; i < steps - 2; i++) {
+      const along = i * transitionSpacing;
+
+      // Create progressively less dense grass rows.
+      transitionLayers.forEach((layer) => {
+        const baseX = start.x + directionX * along + outwardX * layer.offset;
+
+        const baseZ = start.z + directionZ * along + outwardZ * layer.offset;
+
+        addGrassCluster(
+          baseX,
+          baseZ,
+          transitionSpacing,
+          canPlaceTransitionGrass,
+          layer.chance,
+        );
+      });
+    }
+  });
 
   // --------------------------------------------------
   // OUTER GRASS: TWO FOREST BOUNDARIES
