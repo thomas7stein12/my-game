@@ -71,8 +71,8 @@ export async function loadCaveEntrance() {
   }
 
   // Large formations on either side of the entrance.
-  addCavePillar(-4.05, 0.18);
-  addCavePillar(4.05, -0.22);
+  addCavePillar(-3.8, 0.18);
+  addCavePillar(3.25, -0.22);
 
   // --------------------------------------------------
   // UPPER CAVE ARCH
@@ -83,7 +83,7 @@ export async function loadCaveEntrance() {
   addCaveRock({
     position: {
       x: -2.15,
-      y: 4.45,
+      y: 4.1,
       z: rockZ + 0.2,
     },
 
@@ -94,7 +94,7 @@ export async function loadCaveEntrance() {
   addCaveRock({
     position: {
       x: 0,
-      y: 4.8,
+      y: 4.6,
       z: rockZ + 0.4,
     },
 
@@ -105,7 +105,7 @@ export async function loadCaveEntrance() {
   addCaveRock({
     position: {
       x: 2.15,
-      y: 4.45,
+      y: 4.1,
       z: rockZ + 0.2,
     },
 
