@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import { PLAYABLE_AREA_BOUNDARY } from "./WorldDimensions.js";
+import { FOREST_EDGE_SEGMENTS } from "./WorldDimensions.js";
 
 // Create our tree model loader.
 const loader = new GLTFLoader();
@@ -289,88 +289,83 @@ export async function loadForestTrees() {
   const random = createRandom();
 
   // Forest density settings.
+  // The spacing and distance ranges stay close to
+  // the original environment.
   const rows = [
     {
       tier: "near",
-      treesPerSide: 8,
+      treesPerSide: 6,
       minDistance: 14,
       maxDistance: 18,
-      halfWidth: 25,
     },
     {
       tier: "far",
-      treesPerSide: 10,
+      treesPerSide: 6,
       minDistance: 22,
       maxDistance: 29,
-      halfWidth: 34,
     },
   ];
 
-  // Boundary and clearance settings.
-  const boundary = PLAYABLE_AREA_BOUNDARY;
+  // Keep trees safely outside the playable clearing.
   const boundaryClearance = 1.0;
 
-  // Four sides surrounding the playable area.
-  const sides = [
-    { axis: "x", sign: -1, name: "West" },
-    { axis: "x", sign: 1, name: "East" },
-    { axis: "z", sign: -1, name: "North" },
-    { axis: "z", sign: 1, name: "South" },
-  ];
+  // Generate trees along our two angled forest edges.
+  FOREST_EDGE_SEGMENTS.forEach((edge, sideIndex) => {
+    const [start, end] = edge;
 
-  // Generate tree positions.
-  sides.forEach((side, sideIndex) => {
+    const edgeX = end.x - start.x;
+    const edgeZ = end.z - start.z;
+
+    const edgeLength = Math.hypot(edgeX, edgeZ);
+
+    // Normalize the direction along the forest boundary.
+    const directionX = edgeX / edgeLength;
+    const directionZ = edgeZ / edgeLength;
+
+    // Both segments are ordered with the outside
+    // of the clearing on their left.
+    const outwardX = -directionZ;
+    const outwardZ = directionX;
+
     rows.forEach((row, rowIndex) => {
-      const spacing = (row.halfWidth * 2) / row.treesPerSide;
+      const spacing = edgeLength / row.treesPerSide;
 
       for (let i = 0; i < row.treesPerSide; i++) {
-        // Spread trees along the current side.
-        const baseAlong = -row.halfWidth + spacing * (i + 0.5);
+        // Evenly distribute trees along the edge.
+        const baseAlong = spacing * (i + 0.5);
 
-        // Offset the outer row to fill gaps.
+        // Stagger the distant tree row.
         const stagger = rowIndex === 1 ? spacing * 0.5 : 0;
 
         const along = THREE.MathUtils.clamp(
           baseAlong + stagger + (random() - 0.5) * 1.8,
-          -row.halfWidth,
-          row.halfWidth,
+          1.5,
+          edgeLength - 1.5,
         );
 
-        // Choose the tree species and its individual scale.
+        // Select the tree species and individual scale.
         const species = Math.floor(random() * 2);
         const scale = 0.9 + random() * 0.25;
 
-        // Choose the preferred position from our existing distance range.
+        // Preserve the original distance ranges.
         const preferredDistance =
           row.minDistance + random() * (row.maxDistance - row.minDistance);
 
-        // Calculate the actual horizontal footprint of this tree.
         const treeFootprintRadius = modelFootprints[row.tier][species] * scale;
 
-        // Calculate the minimum distance needed to keep the entire tree
-        // outside the boundary, including an extra clearance.
-        const minimumDistance =
-          boundary + boundaryClearance + treeFootprintRadius;
+        const minimumDistance = boundaryClearance + treeFootprintRadius;
 
-        // Never allow a tree to spawn closer than its safe distance.
         const distance = Math.max(preferredDistance, minimumDistance);
 
-        let x;
-        let z;
+        // Calculate the tree's position along the edge
+        // and move it outward into the surrounding forest.
+        const x = start.x + directionX * along + outwardX * distance;
 
-        if (side.axis === "x") {
-          x = side.sign * distance;
-          z = along;
-        } else {
-          x = along;
-          z = side.sign * distance;
-        }
+        const z = start.z + directionZ * along + outwardZ * distance;
 
-        // Split each side into two spatial sections.
-        const segment = along < 0 ? 0 : 1;
+        // Preserve separate spatial batches.
+        const segment = along < edgeLength / 2 ? 0 : 1;
 
-        // Create a separate batch for each side, segment,
-        // detail level, and tree species.
         const batchKey = `${row.tier}|${sideIndex}|${segment}|${species}`;
 
         if (!batches.has(batchKey)) {
@@ -380,10 +375,7 @@ export async function loadForestTrees() {
         batches.get(batchKey).push({
           x,
           z,
-
-          // Use the scale already included in our boundary calculation.
           scale,
-
           rotationY: random() * Math.PI * 2,
         });
       }

@@ -2,7 +2,15 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { PLAYABLE_AREA_BOUNDARY } from "./WorldDimensions.js";
+import {
+  CLIFF_BASE_Z,
+  FOREST_APEX_Z,
+  CLIFF_BASE_WIDTH,
+  GROUND_HALF_SIZE,
+  FOREST_EDGE_SEGMENTS,
+  isInsidePlayableArea,
+  distanceToSegmentXZ,
+} from "./WorldDimensions.js";
 
 // Create our grass model loader.
 const loader = new GLTFLoader();
@@ -281,57 +289,81 @@ export async function loadForestGrass() {
 
   grassGroup.name = "Forest Grass";
 
-  // The ground is 100 x 100, extending 50 units from the center.
-  const groundHalfSize = 50;
+  // Original forest ground dimensions.
+  const groundHalfSize = GROUND_HALF_SIZE;
 
-  // The inside of the playable area.
-  const boundary = PLAYABLE_AREA_BOUNDARY;
-
-  // Keep grass away from the outer edge of the ground.
+  // Keep the same spacing and random distribution.
   const edgeClearance = 0.65;
 
-  // Distribution density.
   const outerSpacing = 1.45;
   const innerSpacing = 0.72;
 
-  // Larger clusters create better ground coverage.
+  // Keep the original cluster size variation.
   const minimumClusterScale = 0.9;
   const maximumClusterScale = 1.45;
 
   // Divide the world into independently culled sections.
   const chunkSize = 25;
 
-  // Find the largest cluster footprint.
+  // Find the largest cluster footprint for chunk bounds.
   const largestFootprint = Math.max(
     ...clusterVariants.map((cluster) => cluster.footprintRadius),
   );
 
-  // Calculate safe distribution limits.
-  function getSafeLimit(areaLimit, spacing) {
-    const maximumJitter = spacing * 0.225;
+  // Grass can grow outside both forest-facing sides.
+  // There is deliberately no grass behind the cliff.
+  const forestBandWidth = 28;
 
+  // Organize grass by spatial chunk and cluster design.
+  const chunkBatches = new Map();
+
+  // Check whether a grass cluster fits within the
+  // original visible ground.
+  function isInsideGround(x, z, margin) {
     return (
-      areaLimit -
-      edgeClearance -
-      largestFootprint * maximumClusterScale -
-      maximumJitter
+      x >= -groundHalfSize + margin &&
+      x <= groundHalfSize - margin &&
+      z >= CLIFF_BASE_Z + margin &&
+      z <= groundHalfSize - margin
     );
   }
 
-  // Safe placement limits for the entire ground and playable area.
-  const outerSafeLimit = getSafeLimit(groundHalfSize, outerSpacing);
-
-  const innerSafeLimit = getSafeLimit(boundary, innerSpacing);
-
-  if (outerSafeLimit <= 0 || innerSafeLimit <= 0) {
-    throw new Error("Grass distribution area is too small.");
+  // Dense grass inside the triangular clearing.
+  function canPlaceInnerGrass(x, z, margin) {
+    return isInsideGround(x, z, margin) && isInsidePlayableArea(x, z, margin);
   }
 
-  // Organize grass instances by spatial chunk and cluster design.
-  const chunkBatches = new Map();
+  // More open grass outside the two forest boundaries.
+  function canPlaceOuterGrass(x, z, margin) {
+    if (!isInsideGround(x, z, margin)) {
+      return false;
+    }
 
-  // Add an individual cluster to the appropriate spatial section.
-  function addGrassCluster(baseX, baseZ, spacing, areaLimit) {
+    // Never place outer grass inside the clearing.
+    if (isInsidePlayableArea(x, z)) {
+      return false;
+    }
+
+    // Leave the area behind the cliff empty.
+    if (z < CLIFF_BASE_Z + margin) {
+      return false;
+    }
+
+    // Find the closest of the two forest boundaries.
+    let nearestEdge = Infinity;
+
+    FOREST_EDGE_SEGMENTS.forEach(([start, end]) => {
+      const distance = distanceToSegmentXZ(x, z, start, end);
+
+      nearestEdge = Math.min(nearestEdge, distance);
+    });
+
+    // Keep the grass within the surrounding forest bands.
+    return nearestEdge <= forestBandWidth - margin;
+  }
+
+  // Add an individual grass cluster.
+  function addGrassCluster(baseX, baseZ, spacing, canPlace) {
     const clusterIndex = Math.floor(random() * clusterVariants.length);
 
     const cluster = clusterVariants[clusterIndex];
@@ -343,25 +375,20 @@ export async function loadForestGrass() {
 
     const rotationY = random() * Math.PI * 2;
 
-    // Natural variation in positioning.
+    // Preserve the original natural positioning variation.
     const jitterX = (random() - 0.5) * spacing * 0.45;
     const jitterZ = (random() - 0.5) * spacing * 0.45;
 
-    // Keep the entire cluster inside its allowed area.
-    const maximumCenter =
-      areaLimit - edgeClearance - cluster.footprintRadius * scale;
+    const x = baseX + jitterX;
+    const z = baseZ + jitterZ;
 
-    const x = THREE.MathUtils.clamp(
-      baseX + jitterX,
-      -maximumCenter,
-      maximumCenter,
-    );
+    // Keep the entire grass cluster safely within
+    // its appropriate region.
+    const requiredMargin = edgeClearance + cluster.footprintRadius * scale;
 
-    const z = THREE.MathUtils.clamp(
-      baseZ + jitterZ,
-      -maximumCenter,
-      maximumCenter,
-    );
+    if (!canPlace(x, z, requiredMargin)) {
+      return;
+    }
 
     // Determine which 25 x 25 section contains this cluster.
     const chunkX = Math.floor((x + groundHalfSize) / chunkSize);
@@ -383,52 +410,42 @@ export async function loadForestGrass() {
     });
   }
 
-  // Create a centered grid using a maximum spacing.
-  function getGridSettings(limit, maximumSpacing) {
-    const cells = Math.max(2, Math.ceil((limit * 2) / maximumSpacing) + 1);
+  // --------------------------------------------------
+  // INNER GRASS: TRIANGULAR CLEARING
+  // --------------------------------------------------
 
-    return {
-      cells,
-      spacing: (limit * 2) / (cells - 1),
-    };
-  }
-
-  // Outer grass: more open, but randomly scattered.
-  for (let x = -outerSafeLimit; x <= outerSafeLimit; x += outerSpacing) {
-    for (let z = -outerSafeLimit; z <= outerSafeLimit; z += outerSpacing) {
-      // Leave some naturally occurring gaps.
-      if (random() < 0.18) continue;
-
-      // Move each cluster away from its regular grid position.
-      const scatteredX = x + (random() - 0.5) * outerSpacing * 1.35;
-      const scatteredZ = z + (random() - 0.5) * outerSpacing * 1.35;
-
-      // Keep the outer grass outside the barrier area.
-      if (
-        Math.max(Math.abs(scatteredX), Math.abs(scatteredZ)) <
-        boundary - outerSpacing * 0.5
-      ) {
-        continue;
-      }
-
-      addGrassCluster(
-        scatteredX,
-        scatteredZ,
-        outerSpacing,
-        groundHalfSize - edgeClearance,
-      );
-    }
-  }
-
-  // Inner grass: denser, with smaller gaps.
-  for (let x = -innerSafeLimit; x <= innerSafeLimit; x += innerSpacing) {
-    for (let z = -innerSafeLimit; z <= innerSafeLimit; z += innerSpacing) {
+  // Keep the existing dense spacing and natural gaps.
+  for (
+    let x = -CLIFF_BASE_WIDTH / 2;
+    x <= CLIFF_BASE_WIDTH / 2;
+    x += innerSpacing
+  ) {
+    for (let z = CLIFF_BASE_Z; z <= FOREST_APEX_Z; z += innerSpacing) {
       if (random() < 0.08) continue;
 
       const scatteredX = x + (random() - 0.5) * innerSpacing * 1.2;
+
       const scatteredZ = z + (random() - 0.5) * innerSpacing * 1.2;
 
-      addGrassCluster(scatteredX, scatteredZ, innerSpacing, boundary);
+      addGrassCluster(scatteredX, scatteredZ, innerSpacing, canPlaceInnerGrass);
+    }
+  }
+
+  // --------------------------------------------------
+  // OUTER GRASS: TWO FOREST BOUNDARIES
+  // --------------------------------------------------
+
+  // Maintain the original more open outer grass density.
+  // Only populate the forest-facing portions of the ground.
+  for (let x = -groundHalfSize; x <= groundHalfSize; x += outerSpacing) {
+    for (let z = CLIFF_BASE_Z; z <= groundHalfSize; z += outerSpacing) {
+      if (random() < 0.18) continue;
+
+      const scatteredX = x + (random() - 0.5) * outerSpacing * 1.35;
+
+      const scatteredZ = z + (random() - 0.5) * outerSpacing * 1.35;
+
+      addGrassCluster(scatteredX, scatteredZ, outerSpacing, canPlaceOuterGrass);
     }
   }
 

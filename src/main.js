@@ -7,8 +7,7 @@ import directionalLight from "./components/DirectionalLight.js";
 import { loadForestGround } from "./components/ForestGround.js";
 import { createFloatingIcon } from "./components/FloatingIcon.js";
 import { loadForestEnvironment } from "./components/ForestEnvironment.js";
-import { loadBoundaryBarriers } from "./components/BoundaryBarriers.js";
-import { loadForestTrees } from "./components/ForestTrees.js";
+import { loadCliff } from "./components/Cliff.js";import { loadForestTrees } from "./components/ForestTrees.js";
 import { createForestSkyFog } from "./components/ForestSky.js";
 import { loadForestGrass } from "./components/ForestGrass.js";
 import { WorldChunkManager } from "./components/WorldChunkManager.js";
@@ -80,13 +79,13 @@ loadForestEnvironment()
     console.error("Failed to load forest environment:", error);
   });
 
-// Load barriers around the playable area.
-loadBoundaryBarriers()
-  .then((barriers) => {
-    scene.add(barriers);
+// Load our main cliff environment.
+loadCliff()
+  .then((cliff) => {
+    scene.add(cliff);
   })
   .catch((error) => {
-    console.error("Failed to load boundary barriers:", error);
+    console.error("Failed to load cliff environment:", error);
   });
 
   // Temp to add new computer

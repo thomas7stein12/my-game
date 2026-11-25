@@ -1,6 +1,10 @@
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import * as THREE from "three";
-import { PLAYABLE_AREA_LIMIT, PLAYABLE_AREA_SIZE } from "./WorldDimensions.js";
+import {
+  isInsidePlayableArea,
+  CLIFF_BASE_WIDTH,
+  PLAYABLE_AREA_DEPTH,
+} from "./WorldDimensions.js";
 
 export function PlayerControls(
   camera,
@@ -282,7 +286,6 @@ export function PlayerControls(
 
   // Movement settings
   const movementSpeed = 6;
-  const platformLimit = PLAYABLE_AREA_LIMIT;
 
   // Approximate radius of the player's collision body.
   const playerRadius = 0.1;
@@ -298,8 +301,8 @@ export function PlayerControls(
     {
       x: 0,
       z: 0,
-      width: PLAYABLE_AREA_SIZE,
-      depth: PLAYABLE_AREA_SIZE,
+      width: CLIFF_BASE_WIDTH,
+      depth: PLAYABLE_AREA_DEPTH,
       topY: 0,
     },
 
@@ -502,21 +505,39 @@ export function PlayerControls(
     controls.moveForward(forward * movementSpeed * delta);
     controls.moveRight(right * movementSpeed * delta);
 
-    // Keep player inside the playable area.
-    camera.position.x = THREE.MathUtils.clamp(
-      camera.position.x,
-      -platformLimit,
-      platformLimit,
-    );
+    // Keep the player inside the triangular playable area.
+    const nextX = camera.position.x;
+    const nextZ = camera.position.z;
 
-    camera.position.z = THREE.MathUtils.clamp(
-      camera.position.z,
-      -platformLimit,
-      platformLimit,
-    );
+    // Check the player's intended destination.
+    if (!isInsidePlayableArea(nextX, nextZ, playerRadius)) {
+      // Allow movement along the boundary when possible.
+      const canSlideX = isInsidePlayableArea(nextX, previousZ, playerRadius);
+
+      const canSlideZ = isInsidePlayableArea(previousX, nextZ, playerRadius);
+
+      if (canSlideX) {
+        camera.position.z = previousZ;
+      } else if (canSlideZ) {
+        camera.position.x = previousX;
+      } else {
+        // Block movement entirely if neither direction is safe.
+        camera.position.x = previousX;
+        camera.position.z = previousZ;
+      }
+    }
 
     // Check and resolve collisions with all the rocks.
     resolveRockCollisions(previousX, previousZ);
+
+    // Rock collision resolution must not push the player
+    // outside the playable triangle.
+    if (
+      !isInsidePlayableArea(camera.position.x, camera.position.z, playerRadius)
+    ) {
+      camera.position.x = previousX;
+      camera.position.z = previousZ;
+    }
 
     // Check whether the player still has a platform underneath them.
     if (isGrounded) {
